@@ -15,8 +15,8 @@ from reading_session import ReadingSession
 from braille_render import render_calibration_frame, render_passage_frame, render_result_frame, cell_geometry
 
 WINDOW_NAME = "Ocurate"
-CANVAS_WIDTH = 1000
-CANVAS_HEIGHT = 400
+CANVAS_WIDTH = 1800
+CANVAS_HEIGHT = 700
 MODEL_PATH = "models/face_landmarker.task"
 CALIBRATION_DWELL_SECONDS = 1.5
 QUIT_KEYS = {ord("q"), 27}
