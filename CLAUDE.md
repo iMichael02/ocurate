@@ -1,35 +1,42 @@
 # Ocurate
 
-Webcam-based Braille reading tracker. Read [CONTEXT.md](./CONTEXT.md) for domain terms and [architecture-design.md](./architecture-design.md) for the technical pipeline before making changes.
+Webcam-based Braille reading tracker. This repo is the **gaze-analysis backend**; the web interface (browser UI plus its own web server) lives elsewhere. Read [CONTEXT.md](./CONTEXT.md) for domain terms and [architecture-design.md](./architecture-design.md) (section 0 especially) for the technical pipeline and the frontend ↔ backend contract before making changes.
 
 ## Stack
 
-Python 3.12, OpenCV, MediaPipe Tasks (Face Landmarker), scikit-learn, Pillow, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`.
+Python 3.12, scikit-learn, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. The WebSocket/REST framework is not chosen yet.
 
-## Running it
+## Status of the split
 
-`venv/bin/python3 main.py` — opens the webcam, runs 9-point calibration (~1.5s per point), then displays the default Passage until it's fully read (or `q`/Esc to quit), then shows the Reading Speed result.
+The code below was written for the old standalone OpenCV app and has not been migrated yet. The design in architecture-design.md is the target; the table marks what changes.
 
 ## Layout
 
-- `camera.py` — `Camera`, a thin `cv2.VideoCapture` wrapper
-- `face_tracker.py` — MediaPipe Face Landmarker wrapper (`FaceTracker`), runs in `VIDEO` mode
-- `eye_features.py` — turns a `FaceTracker` result into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation from the facial transformation matrix, nose position)
-- `gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") described in architecture-design.md (see docs/adr/0001)
+Stays (pure logic, reused by the service):
+
+- `eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). Currently reads a MediaPipe `FaceLandmarkerResult`; it must be adapted to the browser's message.
+- `gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
 - `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
 - `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
-- `calibration.py` — 9-point calibration grid and `gaze_to_braille_cell` (gaze point → row/column on the Braille grid, clamped to the grid bounds)
 - `passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
-- `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer (saccades, regressions, skipped characters)
-- `braille_render.py` — PIL-based rendering of calibration dots, the Braille passage, and the result screen into OpenCV BGR frames (`cv2.putText` can't render the Braille Unicode block, hence PIL)
-- `main.py` — entry point wiring the above into calibrate → read → show result
-- `models/face_landmarker.task` — MediaPipe model asset used by `FaceTracker`
+- `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
+
+Needs changing:
+
+- `calibration.py` — still has the 9-point grid and the uniform-grid `gaze_to_braille_cell`. Target: a 16-point (4×4) grid, and Cell mapping from the browser-reported Cell Layout rectangles.
+
+To be deleted (browser now owns the webcam, MediaPipe and rendering; see docs/adr/0003):
+
+- `camera.py`, `face_tracker.py`, `braille_render.py`, `main.py`, `models/face_landmarker.task`
+
+Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, `GET /passages/{id}`, the token check and the signed result callback.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). Pure-logic modules (`passage.py`, `reading_session.py`, `calibration.py`, `eye_features.py`, `braille_render.py` geometry/shape, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested. `camera.py`, `face_tracker.py`, and the calibration/reading loops in `main.py` are not — they need a real webcam and, for `main.py`'s reading loop specifically, a person actually reading the passage, so they've only been smoke-tested manually against real hardware, not exercised by an automated test.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested. Tests for the deleted modules (`braille_render.py` geometry/shape) go with them. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
 - Keep `CONTEXT.md` a pure glossary (no implementation/pipeline details) and `architecture-design.md` as the pipeline/technical spec — don't let pipeline description creep back into `CONTEXT.md`.
-- Sessions are ephemeral by design (see CONTEXT.md's Session entry) — nothing is persisted to disk after a run; don't add file/DB logging without revisiting that decision first.
+- This service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
+- All timing uses the browser's frame timestamps, never arrival time.

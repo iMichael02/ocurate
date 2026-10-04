@@ -1,6 +1,6 @@
 # Ocurate
 
-A webcam-based tool that tracks a learner's eye gaze while they read Braille displayed on screen, so their Braille-reading process can be evaluated. Built for sighted people training to become caregivers of blind people, to gauge their own Braille reading progress. See [architecture-design.md](./architecture-design.md) for the technical pipeline.
+A webcam-based tool that tracks a learner's eye gaze while they read Braille displayed on screen, so their Braille-reading process can be evaluated. Built for sighted people training to become caregivers of blind people, to gauge their own Braille reading progress. This repo is the gaze-analysis service behind a separate web interface. See [architecture-design.md](./architecture-design.md) for the technical pipeline.
 
 ## Language
 
@@ -9,11 +9,15 @@ The sighted person reading on-screen Braille whose gaze is tracked. Typically so
 _Avoid_: Caregiver, Trainee, User
 
 **Session**:
-One run of calibrate → read → produce a result, for a single Learner. Currently ephemeral: nothing persists once the session ends, and no history is kept across sessions.
-_Avoid_: Profile, History
+One run of calibrate → read → produce a result, for a single Learner. A Session that reaches the end of the Passage is **completed** and yields a result that is kept in the Learner's history; a Session that does not is an Abandoned Session. A Session's calibration data and personalized gaze model are never kept beyond the Session.
+_Avoid_: Profile
+
+**Abandoned Session**:
+A Session that ended before the Learner finished the Passage — the connection dropped, tracking went silent for too long, the Learner quit, or the screen layout changed. It produces no Reading Speed and no secondary-layer metrics. It is recorded only as having ended abandoned. There is no resuming: the Learner starts a new Session and recalibrates.
+_Avoid_: Incomplete Session, Failed Session
 
 **Calibration**:
-A short exercise where the Learner looks at each of a 9-point on-screen grid in turn, producing samples used to personalize the generic gaze model to that individual.
+A short exercise where the Learner looks at each of a 16-point (4×4) on-screen grid in turn, producing samples used to personalize the generic gaze model to that individual. Calibration is only valid for the Cell Layout it was done under.
 _Avoid_: Enrollment, Training (training is the generic model's separate offline process)
 
 **Gaze Point**:
@@ -23,8 +27,11 @@ A normalized (x, y) coordinate, predicted per frame, representing where on the s
 A discrete on-screen region corresponding to one Braille character's position. A Gaze Point falling inside a cell's bounds is assigned to that cell (e.g. "C3"), turning imprecise gaze coordinates into a specific character reference.
 _Avoid_: Gaze Target
 
+**Cell Layout**:
+Where every Braille Cell of the Passage actually sits on the Learner's screen for a Session, as reported by the display. Fixed for the whole Session; a change to it abandons the Session.
+
 **Passage**:
-A fixed, pre-loaded piece of Grade 1 (uncontracted) Braille text the Learner reads during a Session, with a known total character/word count and uniform line length. Ground truth for both Reading Speed and eye-movement analysis.
+A fixed, pre-loaded piece of Grade 1 (uncontracted) Braille text the Learner reads during a Session, with a known total character/word count and uniform line length. Its content is fixed; where it appears on screen is the Cell Layout. Ground truth for both Reading Speed and eye-movement analysis.
 _Avoid_: Text, Content
 
 **Reading Speed**:
