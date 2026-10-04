@@ -1,6 +1,6 @@
-opencv-python
-mediapipe
 numpy
 scikit-learn
-pillow
+fastapi
+uvicorn[standard]
+httpx
 pytest

@@ -4,15 +4,21 @@ Webcam-based Braille reading tracker. This repo is the **gaze-analysis backend**
 
 ## Stack
 
-Python 3.12, scikit-learn, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. The WebSocket/REST framework is not chosen yet.
+Python 3.12, FastAPI (+ uvicorn), scikit-learn, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. See README.md for running, testing and the `OCURATE_*` configuration.
 
 ## Status of the split
 
-The code below was written for the old standalone OpenCV app and has not been migrated yet. The design in architecture-design.md is the target; the table marks what changes.
+The old standalone OpenCV app has been removed. The service skeleton exists; the pure-logic modules below were written for the old app and are still being migrated. The design in architecture-design.md is the target.
 
 ## Layout
 
-Stays (pure logic, reused by the service):
+Service skeleton:
+
+- `app.py` — FastAPI app factory (`create_app`) with `GET /health`
+- `config.py` — `Settings`, read from `OCURATE_*` environment variables
+- `log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
+
+Pure logic, reused by the service:
 
 - `eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). Currently reads a MediaPipe `FaceLandmarkerResult`; it must be adapted to the browser's message.
 - `gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
@@ -25,15 +31,11 @@ Needs changing:
 
 - `calibration.py` — still has the 9-point grid and the uniform-grid `gaze_to_braille_cell`. Target: a 16-point (4×4) grid, and Cell mapping from the browser-reported Cell Layout rectangles.
 
-To be deleted (browser now owns the webcam, MediaPipe and rendering; see docs/adr/0003):
-
-- `camera.py`, `face_tracker.py`, `braille_render.py`, `main.py`, `models/face_landmarker.task`
-
 Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, `GET /passages/{id}`, the token check and the signed result callback.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested. Tests for the deleted modules (`braille_render.py` geometry/shape) go with them. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested, as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
