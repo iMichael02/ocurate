@@ -29,7 +29,7 @@ Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed r
 | `type` | Fields |
 |---|---|
 | `hello` | `version` (int), `token` (string) |
-| `layout` | `viewport`: `{width, height}` (px, > 0). `cells`: list of `{row, col, x, y, w, h}`, rectangle in 0–1, `w` and `h` > 0, inside the viewport. Must cover every Cell of the Passage with no duplicate (row, col). Sent once, before calibration. |
+| `layout` | `viewport`: `{width, height}` (px, > 0). `cells`: list of `{row, col, x, y, w, h}`, rectangle in 0–1 (viewport-normalized), `w` and `h` > 0, inside the viewport. Must cover every Cell of the Passage with no duplicate (row, col). Sent once, before calibration. |
 | `frame` | `t` (ms, finite). `iris`: 8 × `{x, y}`. `eye_corners`: 8 × `{x, y}`. `nose`: `{x, y}`. `matrix`: 4 × 4 numbers (4 rows of 4). `target`: optional `{x, y}`, present only during calibration. |
 | `calibration_restart` | none. Only valid after a `failed` outcome with attempts left. Discards the failed attempt's samples. |
 | `calibration_done` | none |
@@ -42,7 +42,11 @@ Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed r
 - `eye_corners`: left eye (362 left, 263 right, 386 top, 374 bottom), then right eye (133 left, 33 right, 159 top, 145 bottom).
 - `nose`: nose tip.
 
-Landmark `x` and `y` must be in 0–1. `z` is not sent (the current features do not use it).
+Landmark `x` and `y` are MediaPipe's values, normalized to the camera image (not the viewport), and are sent unchanged. They can fall slightly outside 0–1 when the face is partly out of frame, so the accepted range is **−0.5 to 1.5**. Values outside it are rejected (`invalid_message`). Values inside the margin but outside 0–1 are valid input; the feature code treats such frames as unusable rather than the protocol rejecting them. `target` and `layout` coordinates are viewport-normalized and must be strictly within 0–1. `z` is not sent (the current features do not use it).
+
+`matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that, as far as we recall, is column-major, so the browser must transpose while reshaping. Verify against real MediaPipe output when the frontend is built, and correct this note if it is wrong.
+
+Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (17 of 478 landmarks, no `z`, no blendshapes), plus `t` and the optional `target`.
 
 ## Service → browser
 
@@ -114,4 +118,4 @@ A failed calibration is retried on the same socket, up to `max_attempts` attempt
 
 - The default for `max_attempts` (3) is a proposal.
 - The example transcript (handshake, layout, calibration, reading, completion) is produced at implementation time.
-- Acceptance tests: one valid and one invalid example per message type, plus out-of-range landmarks, a non-4×4 matrix and non-finite numbers.
+- Acceptance tests: one valid and one invalid example per message type, plus out-of-range landmarks, a non-4×4 matrix, non-finite numbers, and the −0.5/1.5 landmark boundaries.
