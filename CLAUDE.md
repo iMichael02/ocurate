@@ -21,7 +21,7 @@ Service skeleton:
 
 Pure logic, reused by the service:
 
-- `eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). Currently reads a MediaPipe `FaceLandmarkerResult`; it must be adapted to the browser's message.
+- `eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
 - `gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
 - `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
 - `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)

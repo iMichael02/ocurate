@@ -1,7 +1,16 @@
+import copy
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
-from eye_features import normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE
+import protocol
+from eye_features import (
+    normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE,
+    IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP,
+)
 
 
 def test_normalize_iris_centered_gives_midpoint():
@@ -29,54 +38,147 @@ def test_eye_aspect_ratio_is_zero_when_closed():
     assert eye_aspect_ratio(top, bottom, left, right) == 0.0
 
 
-def test_extract_features_returns_none_without_a_face():
-
-    class EmptyResult:
-        face_landmarks = []
-
-    assert extract_features(EmptyResult()) is None
+GOLDEN = json.loads((Path(__file__).parent / "golden" / "eye_features.json").read_text())
 
 
-class _Landmark:
-    def __init__(self, x, y, z=0.0):
-        self.x = x
-        self.y = y
-        self.z = z
+def _frame_message(**overrides):
+    """A valid browser frame: both eyes placed so normalize_iris/EAR don't
+    divide by zero."""
 
-
-def _fake_face_result(transforms=(np.eye(4),)):
-
-    landmarks = [_Landmark(0.5, 0.5) for _ in range(478)]
-
-    # place both eyes' corners and irises so normalize_iris/EAR don't divide by zero
-    for idx, (x, y) in {
+    corners = {
         362: (0.3, 0.4), 263: (0.4, 0.4), 386: (0.35, 0.35), 374: (0.35, 0.45),
         133: (0.6, 0.4), 33: (0.7, 0.4), 159: (0.65, 0.35), 145: (0.65, 0.45),
-        1: (0.5, 0.6),
-    }.items():
-        landmarks[idx] = _Landmark(x, y)
+    }
 
-    for idx in [474, 475, 476, 477]:
-        landmarks[idx] = _Landmark(0.35, 0.4)
+    message = {
+        "type": "frame",
+        "t": 100.0,
+        "iris": [{"x": 0.35, "y": 0.4}] * 4 + [{"x": 0.65, "y": 0.4}] * 4,
+        "eye_corners": [{"x": corners[i][0], "y": corners[i][1]} for i in EYE_CORNER_IDS],
+        "nose": {"x": 0.5, "y": 0.6},
+        "matrix": np.eye(4).tolist(),
+    }
+    message.update(overrides)
 
-    for idx in [469, 470, 471, 472]:
-        landmarks[idx] = _Landmark(0.65, 0.4)
+    return message
 
-    class Result:
-        face_landmarks = [landmarks]
-        facial_transformation_matrixes = transforms
 
-    return Result()
+def _frame(**overrides):
+
+    return protocol.Frame.model_validate(_frame_message(**overrides))
+
+
+def test_landmark_ids_match_the_protocol_order():
+
+    assert IRIS_IDS == [474, 475, 476, 477, 469, 470, 471, 472]
+    assert EYE_CORNER_IDS == [362, 263, 386, 374, 133, 33, 159, 145]
+    assert NOSE_TIP == 1
 
 
 def test_extract_features_shape():
 
-    features = extract_features(_fake_face_result())
+    features = extract_features(_frame())
 
     assert features.shape == (FEATURE_SIZE,)
     assert features.dtype == np.float32
 
 
-def test_extract_features_returns_none_without_a_transformation_matrix():
+def test_extract_features_vector_layout():
 
-    assert extract_features(_fake_face_result(transforms=None)) is None
+    features = extract_features(_frame(matrix=[[1, 2, 3, 10], [4, 5, 6, 11], [7, 8, 9, 12], [0, 0, 0, 1]]))
+
+    assert features[6:15].tolist() == [1, 2, 3, 4, 5, 6, 7, 8, 9]    # rotation, row-major
+    assert features[15:18].tolist() == [10, 11, 12]                  # translation
+    assert features[18:20] == pytest.approx([0.5, 0.6])              # nose
+
+
+@pytest.mark.parametrize("index", range(len(GOLDEN["cases"])))
+def test_matches_vectors_recorded_from_the_old_implementation(index):
+
+    case = GOLDEN["cases"][index]
+
+    features = extract_features(protocol.Frame.model_validate(case["frame"]))
+
+    np.testing.assert_array_equal(features, np.array(case["expected"], dtype=np.float32))
+
+
+def test_golden_inputs_are_valid_protocol_frames():
+
+    assert len(GOLDEN["cases"]) >= 10
+
+    for case in GOLDEN["cases"]:
+        protocol.parse_client_message(json.dumps(case["frame"]))
+
+
+def test_extract_features_returns_none_without_a_frame():
+
+    assert extract_features(None) is None
+
+
+@pytest.mark.parametrize("field", ["iris", "eye_corners"])
+def test_returns_none_when_a_landmark_is_missing(field):
+
+    frame = _frame()
+    frame = SimpleNamespace(**{**frame.__dict__, field: getattr(frame, field)[:-1]})
+
+    assert extract_features(frame) is None
+
+
+@pytest.mark.parametrize("field", ["iris", "eye_corners", "nose", "matrix"])
+def test_returns_none_when_a_field_is_absent(field):
+
+    frame = _frame()
+    values = {k: v for k, v in frame.__dict__.items() if k != field}
+
+    assert extract_features(SimpleNamespace(**values)) is None
+    assert extract_features(SimpleNamespace(**{**values, field: None})) is None
+
+
+def test_returns_none_for_a_landmark_without_coordinates():
+
+    frame = _frame()
+    iris = list(frame.iris)
+    iris[2] = SimpleNamespace(x=None, y=0.5)
+
+    assert extract_features(SimpleNamespace(**{**frame.__dict__, "iris": iris})) is None
+
+
+@pytest.mark.parametrize("value", [-0.2, 1.3])
+def test_returns_none_when_a_landmark_is_outside_the_camera_image(value):
+    # Valid on the wire (the protocol allows -0.5 to 1.5) but unusable.
+
+    assert extract_features(_frame(nose={"x": value, "y": 0.5})) is None
+    assert extract_features(_frame(iris=[{"x": 0.35, "y": value}] * 4 + [{"x": 0.65, "y": 0.4}] * 4)) is None
+
+
+def test_landmarks_on_the_image_edge_are_usable():
+
+    assert extract_features(_frame(nose={"x": 0.0, "y": 1.0})) is not None
+
+
+@pytest.mark.parametrize("matrix", [
+    [[1, 0, 0, 0]] * 3,                       # 3x4
+    [[1, 0, 0]] * 4,                          # 4x3
+    [0.0] * 16,                               # flat
+    [[1, 0, 0, 0], [0, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]],   # ragged
+    [["a"] * 4] * 4,                          # not numbers
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, float("nan")]],
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, float("inf")]],
+    "matrix",
+    [],
+])
+def test_returns_none_for_a_malformed_matrix(matrix):
+
+    frame = _frame()
+
+    assert extract_features(SimpleNamespace(**{**frame.__dict__, "matrix": matrix})) is None
+
+
+def test_does_not_modify_the_frame():
+
+    frame = _frame()
+    before = copy.deepcopy(frame.model_dump())
+
+    extract_features(frame)
+
+    assert frame.model_dump() == before

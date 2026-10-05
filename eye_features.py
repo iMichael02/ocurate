@@ -1,5 +1,11 @@
+import numbers
+
 import numpy as np
 
+# MediaPipe Face Landmarker ids of the landmark subset the browser sends. The
+# order of these lists is the order of `frame.iris` and `frame.eye_corners`
+# (see protocol.py and docs/websocket-protocol.md). Only the order matters to
+# this module; the ids document where each value comes from.
 LEFT_IRIS = [474, 475, 476, 477]
 RIGHT_IRIS = [469, 470, 471, 472]
 
@@ -8,12 +14,14 @@ RIGHT_EYE_CORNERS = {"left": 133, "right": 33, "top": 159, "bottom": 145}
 
 NOSE_TIP = 1
 
+IRIS_IDS = LEFT_IRIS + RIGHT_IRIS
+EYE_CORNER_IDS = [LEFT_EYE_CORNERS[k] for k in ("left", "right", "top", "bottom")] + \
+                 [RIGHT_EYE_CORNERS[k] for k in ("left", "right", "top", "bottom")]
+
 FEATURE_SIZE = 20
 
 
-def landmark_xy(landmarks, index):
-
-    p = landmarks[index]
+def landmark_xy(p):
 
     return np.array([
         p.x,
@@ -21,14 +29,12 @@ def landmark_xy(landmarks, index):
     ], dtype=np.float32)
 
 
-def iris_center(landmarks, indices):
+def iris_center(points):
 
-    points = np.array([
-        [landmarks[i].x, landmarks[i].y]
-        for i in indices
-    ])
-
-    return points.mean(axis=0)
+    return np.array([
+        [p.x, p.y]
+        for p in points
+    ]).mean(axis=0)
 
 
 def normalize_iris(
@@ -83,14 +89,12 @@ def eye_aspect_ratio(
     )
 
 
-def _eye_features(landmarks, iris_indices, corners):
+def _eye_features(iris_points, corner_points):
+    """`corner_points` is left, right, top, bottom."""
 
-    iris = iris_center(landmarks, iris_indices)
+    iris = iris_center(iris_points)
 
-    eye_left = landmark_xy(landmarks, corners["left"])
-    eye_right = landmark_xy(landmarks, corners["right"])
-    eye_top = landmark_xy(landmarks, corners["top"])
-    eye_bottom = landmark_xy(landmarks, corners["bottom"])
+    eye_left, eye_right, eye_top, eye_bottom = (landmark_xy(p) for p in corner_points)
 
     norm = normalize_iris(iris, eye_left, eye_right, eye_top, eye_bottom)
     ear = eye_aspect_ratio(eye_top, eye_bottom, eye_left, eye_right)
@@ -98,30 +102,74 @@ def _eye_features(landmarks, iris_indices, corners):
     return norm, ear
 
 
-def extract_features(face_landmarker_result):
-    """Builds the eye-appearance + head-pose + face-position feature vector
-    (see architecture-design.md step 3) from a single MediaPipe
-    FaceLandmarker result. Returns None if no face was detected.
-    """
+def _usable_landmarks(points, count):
+    """True if `points` holds `count` landmarks, each with finite x and y
+    inside the camera image (0-1). The protocol lets landmarks lie slightly
+    outside the image; those frames are unusable, same as no face."""
 
-    if not face_landmarker_result or not face_landmarker_result.face_landmarks:
+    if points is None or len(points) != count:
+        return False
+
+    for p in points:
+        x = getattr(p, "x", None)
+        y = getattr(p, "y", None)
+        if not (isinstance(x, numbers.Real) and isinstance(y, numbers.Real)):
+            return False
+        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            return False
+
+    return True
+
+
+def _pose_matrix(matrix):
+    """The 4x4 transformation matrix (rows) as an array, or None if it is
+    missing, not 4x4 or not finite."""
+
+    if matrix is None:
         return None
 
-    transforms = getattr(face_landmarker_result, "facial_transformation_matrixes", None)
+    try:
+        array = np.array(matrix, dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
 
-    if not transforms:
+    if array.shape != (4, 4) or not np.isfinite(array).all():
+        return None
+
+    return array
+
+
+def extract_features(frame):
+    """Builds the eye-appearance + head-pose + face-position feature vector
+    (see architecture-design.md step 3) from one browser `frame` message
+    (protocol.Frame): 8 iris landmarks, 8 eye-corner landmarks, the nose tip
+    and the 4x4 facial transformation matrix (row-major). Returns None
+    ("no face") if any of them is missing or unusable.
+    """
+
+    if frame is None:
+        return None
+
+    iris = getattr(frame, "iris", None)
+    corners = getattr(frame, "eye_corners", None)
+    nose = getattr(frame, "nose", None)
+
+    if not _usable_landmarks(iris, 8) or not _usable_landmarks(corners, 8):
+        return None
+
+    if not _usable_landmarks([nose], 1):
+        return None
+
+    matrix = _pose_matrix(getattr(frame, "matrix", None))
+
+    if matrix is None:
         # Head pose is part of the feature vector (see architecture-design.md
         # step 3); without it this frame isn't usable, same as no face at all.
         return None
 
-    landmarks = face_landmarker_result.face_landmarks[0]
+    left_norm, left_ear = _eye_features(iris[:4], corners[:4])
+    right_norm, right_ear = _eye_features(iris[4:], corners[4:])
 
-    left_norm, left_ear = _eye_features(landmarks, LEFT_IRIS, LEFT_EYE_CORNERS)
-    right_norm, right_ear = _eye_features(landmarks, RIGHT_IRIS, RIGHT_EYE_CORNERS)
-
-    nose = landmark_xy(landmarks, NOSE_TIP)
-
-    matrix = np.array(transforms[0]).reshape(4, 4)
     rotation = matrix[:3, :3].flatten()
     translation = matrix[:3, 3]
 
@@ -131,5 +179,5 @@ def extract_features(face_landmarker_result):
         [left_ear, right_ear],
         rotation,
         translation,
-        nose,
+        landmark_xy(nose),
     ]).astype(np.float32)
