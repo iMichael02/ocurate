@@ -39,8 +39,10 @@ Browser (web interface)            Web server                    Gaze-analysis s
 | Direction | `type` | Payload |
 |---|---|---|
 | browser → service | `hello` | `version`, token |
+| service → browser | `hello_ack` | the negotiated `version` and the `supported` versions |
 | browser → service | `layout` | viewport size and every Cell rectangle, normalized 0–1 to the viewport. Sent once, before calibration. |
 | browser → service | `frame` | `t` (browser capture time, ms), the landmark subset (8 iris, 8 eye-corner, nose-tip landmarks), the 4×4 facial transformation matrix, and during calibration the current `target` point |
+| browser → service | `calibration_restart` | none. Retry after a failed calibration, on the same socket, up to a limited number of attempts. |
 | browser → service | `calibration_done` | none |
 | browser → service | `viewport_changed` / `quit` | none |
 | service → browser | `calibration_status` | per-target status (face seen, sample count), then `ready` or `failed` |

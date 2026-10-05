@@ -23,6 +23,7 @@ class Settings:
     max_message_bytes: int = 65536
     max_frames_per_second: int = 30
     max_concurrent_sessions: int = 100
+    max_calibration_attempts: int = 3
 
     log_level: str = "INFO"
 
@@ -54,5 +55,6 @@ def load_settings():
         max_message_bytes=_read("MAX_MESSAGE_BYTES", int, defaults.max_message_bytes),
         max_frames_per_second=_read("MAX_FRAMES_PER_SECOND", int, defaults.max_frames_per_second),
         max_concurrent_sessions=_read("MAX_CONCURRENT_SESSIONS", int, defaults.max_concurrent_sessions),
+        max_calibration_attempts=_read("MAX_CALIBRATION_ATTEMPTS", int, defaults.max_calibration_attempts),
         log_level=_read("LOG_LEVEL", str, defaults.log_level).upper(),
     )

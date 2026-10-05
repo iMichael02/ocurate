@@ -1,6 +1,7 @@
 numpy
 scikit-learn
 fastapi
+pydantic>=2
 uvicorn[standard]
 httpx
 pytest

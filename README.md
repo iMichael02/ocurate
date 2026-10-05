@@ -38,6 +38,7 @@ All settings are environment variables. Unset or empty values use the default.
 | `OCURATE_MAX_MESSAGE_BYTES` | `65536` | Largest accepted WebSocket message |
 | `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session |
 | `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Live Sessions allowed at once |
+| `OCURATE_MAX_CALIBRATION_ATTEMPTS` | `3` | Calibration attempts per Session before it is abandoned |
 | `OCURATE_LOG_LEVEL` | `INFO` | Python logging level |
 
 Unset secrets let the app start for local development. The endpoints that need them must refuse to work while they are unset.

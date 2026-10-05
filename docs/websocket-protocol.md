@@ -1,6 +1,6 @@
 # WebSocket protocol (draft, T2)
 
-Status: **design only, not implemented.** This is the proposed single definition of every message exchanged between the browser and this service. Schemas, tests and the example transcript will all be derived from it. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
+Status: schemas implemented in [`protocol.py`](../protocol.py) and tested in `tests/test_protocol.py`; the WebSocket endpoint and Session manager are not written yet. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
 
 Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed result callback (web server ↔ service) are separate HTTP contracts and are out of scope.
 
@@ -9,6 +9,10 @@ Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed r
 - **Service**: validates every incoming message and builds every outgoing one from the schemas.
 - **Frontend**: codes against the same shapes, the transcript and the reason codes.
 - **Tests**: use the schemas as the source of truth.
+
+## Enforced by the schemas, and by the Session manager
+
+The schemas check the shape of one message. Rules that depend on Session state are the Session manager's job: message order, the Layout covering every Cell of the Passage, monotonic `t`, and the 30 s timeout. Row and column indices are 0-based.
 
 ## Conventions
 
@@ -53,14 +57,14 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 | `type` | Fields |
 |---|---|
 | `hello_ack` | `version` (negotiated), `supported` (list of ints) |
-| `calibration_status` | `points`: 16 × `{index, state, samples}` where `state` is `pending`, `collecting`, `ok` or `skipped`. `outcome`: `null`, `ready` or `failed`. `reason` when failed. `attempt` and `max_attempts` (ints). |
+| `calibration_status` | `points`: 16 × `{index, state, samples}` where `state` is `pending`, `collecting`, `ok` or `skipped`. `outcome`: `null` while in progress, then `ready` or `failed`. `reason` (`too_few_points` or `missing_row_or_column`) when failed and only then; otherwise `null`. `points` must contain indices 0–15 exactly once. `attempt` and `max_attempts` (ints). |
 | `reading_started` | none |
 | `fixation` | `row`, `col`, `t` |
-| `completed` | `result`: `{cpm, wpm, elapsed_s, saccades, regressions, skipped_chars}`. `fixations`: list of `{row, col, t, duration}`. |
+| `completed` | `result`: `{elapsed_seconds, cpm, wpm, saccades, regressions, skipped_characters, sequence}`, as `ReadingSession.result()` reports it. `sequence` is the list of fixated Cells in order, each `{row, col}`. |
 | `abandoned` | `reason` |
 | `error` | `code`, `message` (human-readable only) |
 
-`hello_ack` is new relative to architecture-design.md section 0; add it there when this is implemented.
+`hello_ack` and `calibration_restart` are additions to the table in architecture-design.md section 0, which has been updated to match.
 
 ## Errors and close reasons
 
@@ -105,7 +109,7 @@ frame (no target) … → reading_started → fixation … → completed
 
 ## Calibration retries
 
-A failed calibration is retried on the same socket, up to `max_attempts` attempts in total (default 3, configurable via `OCURATE_*` settings). This is not a resume: the Layout, token and Session are unchanged, only the calibration samples are discarded.
+A failed calibration is retried on the same socket, up to `max_attempts` attempts in total (default 3, `OCURATE_MAX_CALIBRATION_ATTEMPTS`). This is not a resume: the Layout, token and Session are unchanged, only the calibration samples are discarded.
 
 - On failure, the service sends `calibration_status{outcome: "failed", attempt, max_attempts}`. If `attempt < max_attempts`, the Session stays in the calibration state and the browser sends `calibration_restart`, then streams `frame`s with `target` again from the first point.
 - If `attempt == max_attempts`, the service sends `error{code: "calibration_failed"}` and `abandoned{reason: "calibration_failed"}`, then closes with `1000`. The Learner must start a new Session.
@@ -113,9 +117,3 @@ A failed calibration is retried on the same socket, up to `max_attempts` attempt
 - Samples from failed attempts are never kept.
 
 `viewport_changed`, `quit`, a socket drop or `frame_timeout` end the Session as `abandoned` at any point. A message that arrives in the wrong state gets `out_of_order`.
-
-## Open points
-
-- The default for `max_attempts` (3) is a proposal.
-- The example transcript (handshake, layout, calibration, reading, completion) is produced at implementation time.
-- Acceptance tests: one valid and one invalid example per message type, plus out-of-range landmarks, a non-4×4 matrix, non-finite numbers, and the −0.5/1.5 landmark boundaries.

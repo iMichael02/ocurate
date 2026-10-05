@@ -7,7 +7,7 @@ def test_defaults_when_environment_is_empty(monkeypatch):
 
     for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET",
                  "TOKEN_TTL_SECONDS", "SESSION_INACTIVITY_SECONDS", "MAX_MESSAGE_BYTES",
-                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "LOG_LEVEL"):
+                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "LOG_LEVEL"):
         monkeypatch.delenv("OCURATE_" + name, raising=False)
 
     settings = load_settings()
@@ -21,6 +21,7 @@ def test_defaults_when_environment_is_empty(monkeypatch):
     assert settings.max_message_bytes == 65536
     assert settings.max_frames_per_second == 30
     assert settings.max_concurrent_sessions == 100
+    assert settings.max_calibration_attempts == 3
     assert settings.log_level == "INFO"
 
 
