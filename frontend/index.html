@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ocurate · Braille Reading</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo" aria-hidden="true">◉</span>
+      <div>
+        <div class="brand-name">Ocurate</div>
+        <div class="brand-sub">Braille Reading Performance</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="mode-badge" class="badge badge-muted">Mock service</span>
+      <span id="rec-badge" class="badge badge-rec hidden">● Recording <span id="rec-time">00:00</span></span>
+    </div>
+  </header>
+
+  <!-- ===== Screen 1: Start ===== -->
+  <main id="screen-start" class="screen">
+    <section class="card start-card">
+      <h1>Braille reading test</h1>
+      <p class="muted">
+        We track where your eyes go while you read the Braille passage.
+        Your video never leaves this browser — only a few face landmarks are sent.
+      </p>
+
+      <ol class="steps">
+        <li><strong>Calibrate</strong> — look at 16 dots, one after another.</li>
+        <li><strong>Read</strong> — read the passage from the first cell to the last.</li>
+        <li><strong>Results</strong> — see your reading speed and eye movements.</li>
+      </ol>
+
+      <div class="tips">
+        <span>📷 Camera required</span>
+        <span>💡 Good, even lighting</span>
+        <span>🖥️ Keep the window size fixed</span>
+      </div>
+
+      <div class="camera-preview">
+        <video id="preview-video" autoplay playsinline muted></video>
+        <div id="camera-status" class="camera-status">Camera off</div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-camera" class="btn btn-secondary">Enable camera</button>
+        <button id="btn-start" class="btn btn-primary" disabled>▶ Start reading test</button>
+      </div>
+      <p id="start-error" class="error hidden"></p>
+    </section>
+  </main>
+
+  <!-- ===== Screen 2: Session (calibration overlay + reading) ===== -->
+  <main id="screen-session" class="screen hidden">
+    <div class="session-grid">
+      <aside class="card side-panel">
+        <div class="cam-box">
+          <video id="session-video" autoplay playsinline muted></video>
+          <span id="tracking-pill" class="pill pill-off">No face</span>
+        </div>
+        <dl class="stats">
+          <div><dt>Phase</dt><dd id="stat-phase">—</dd></div>
+          <div><dt>Current cell</dt><dd id="stat-cell">—</dd></div>
+          <div><dt>Frames / s</dt><dd id="stat-fps">0</dd></div>
+          <div><dt>Fixations</dt><dd id="stat-fixations">0</dd></div>
+        </dl>
+        <button id="btn-quit" class="btn btn-ghost">Quit session</button>
+      </aside>
+
+      <section class="card reading-card">
+        <div class="reading-head">
+          <h2>Reading</h2>
+          <span id="reading-hint" class="muted">Start at the top-left cell</span>
+        </div>
+        <div id="passage" class="passage" aria-label="Braille passage"></div>
+        <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="progress-label" class="muted small">Waiting for calibration…</p>
+      </section>
+    </div>
+
+    <!-- Calibration overlay: covers the whole viewport, targets are viewport-normalized -->
+    <div id="calibration" class="calibration hidden">
+      <div class="calib-info">
+        <h2>Calibration</h2>
+        <p id="calib-text">Look at the blue dot until it moves.</p>
+        <p id="calib-attempt" class="muted small"></p>
+      </div>
+      <div id="calib-target" class="calib-target"></div>
+      <div id="calib-grid" class="calib-grid"></div>
+      <div id="calib-failed" class="calib-failed hidden">
+        <p id="calib-failed-text"></p>
+        <button id="btn-calib-retry" class="btn btn-primary">Try again</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Results modal ===== -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <button id="btn-modal-close" class="modal-x" aria-label="Close">×</button>
+      <div class="trophy" aria-hidden="true">🏆</div>
+      <h2 id="modal-title">Reading complete!</h2>
+      <p class="muted">Here are your results</p>
+
+      <div class="headline">
+        <div class="muted small">Reading speed</div>
+        <div class="headline-value"><span id="res-cpm">—</span> <small>chars / min</small></div>
+        <div class="muted small"><span id="res-wpm">—</span> words / min</div>
+      </div>
+
+      <ul class="result-list">
+        <li><span>⏱ Reading time</span><b id="res-time">—</b></li>
+        <li><span>➡ Saccades</span><b id="res-saccades">—</b></li>
+        <li><span>↩ Regressions</span><b id="res-regressions">—</b></li>
+        <li><span>⤼ Skipped characters</span><b id="res-skipped">—</b></li>
+        <li><span>◎ Cells fixated</span><b id="res-sequence">—</b></li>
+      </ul>
+
+      <button id="btn-again" class="btn btn-primary btn-block">New session</button>
+    </div>
+  </div>
+
+  <!-- ===== Abandoned modal ===== -->
+  <div id="modal-abandoned" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Session ended</h2>
+      <p id="abandoned-text" class="muted"></p>
+      <button id="btn-abandoned-ok" class="btn btn-primary btn-block">Start over</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
