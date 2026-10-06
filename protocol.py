@@ -12,7 +12,7 @@ from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-SUPPORTED_VERSIONS = (1,)
+SUPPORTED_VERSIONS = (1, 2)
 CALIBRATION_POINT_COUNT = 16
 
 LANDMARK_MIN = -0.5
@@ -72,6 +72,16 @@ class Landmark(Message):
     y: Annotated[float, Field(ge=LANDMARK_MIN, le=LANDMARK_MAX)]
 
 
+class EyeCentre(Message):
+    """An eye centre located by the browser (Timm & Barth, see
+    docs/eye-centre.md), in the same camera-image coordinates as a Landmark.
+    `confidence` is 0-1; the service decides how low is too low."""
+
+    x: Annotated[float, Field(ge=LANDMARK_MIN, le=LANDMARK_MAX)]
+    y: Annotated[float, Field(ge=LANDMARK_MIN, le=LANDMARK_MAX)]
+    confidence: UnitFloat
+
+
 class Viewport(Message):
 
     width: Annotated[float, Field(gt=0)]
@@ -120,6 +130,7 @@ class Layout(Message):
 
 
 Landmarks8 = Annotated[List[Landmark], Field(min_length=8, max_length=8)]
+EyeCentres2 = Annotated[List[EyeCentre], Field(min_length=2, max_length=2)]
 MatrixRow = Annotated[List[float], Field(min_length=4, max_length=4)]
 Matrix4x4 = Annotated[List[MatrixRow], Field(min_length=4, max_length=4)]
 
@@ -129,7 +140,9 @@ class Frame(Message):
     (469-472). `eye_corners` is, per eye (left eye first), left, right, top and
     bottom (362, 263, 386, 374 then 133, 33, 159, 145). `matrix` is row-major
     (rotation in [:3, :3], translation in [:3, 3]). `target` is present only
-    during calibration."""
+    during calibration. `eye_centres` (protocol version 2 only; the Session
+    manager rejects it on a version 1 Session) is the left eye's then the
+    right eye's centre."""
 
     type: Literal["frame"]
     t: NonNegativeFloat
@@ -138,6 +151,7 @@ class Frame(Message):
     nose: Landmark
     matrix: Matrix4x4
     target: Optional[Point] = None
+    eye_centres: Optional[EyeCentres2] = None
 
 
 class CalibrationRestart(Message):

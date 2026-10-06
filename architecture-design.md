@@ -41,7 +41,7 @@ Browser (web interface)            Web server                    Gaze-analysis s
 | browser → service | `hello` | `version`, token |
 | service → browser | `hello_ack` | the negotiated `version` and the `supported` versions |
 | browser → service | `layout` | viewport size and every Cell rectangle, normalized 0–1 to the viewport. Sent once, before calibration. |
-| browser → service | `frame` | `t` (browser capture time, ms), the landmark subset (8 iris, 8 eye-corner, nose-tip landmarks), the 4×4 facial transformation matrix, and during calibration the current `target` point |
+| browser → service | `frame` | `t` (browser capture time, ms), the landmark subset (8 iris, 8 eye-corner, nose-tip landmarks), the 4×4 facial transformation matrix, during calibration the current `target` point, and (protocol version 2) the per-eye `eye_centres` the browser located with Timm & Barth |
 | browser → service | `calibration_restart` | none. Retry after a failed calibration, on the same socket, up to a limited number of attempts. |
 | browser → service | `calibration_done` | none |
 | browser → service | `viewport_changed` / `quit` | none |
@@ -58,7 +58,7 @@ Browser (web interface)            Web server                    Gaze-analysis s
 - **Abandonment**: no resume. A socket drop, `quit`, `viewport_changed`, or 30 s without frames ends the Session as abandoned. Abandoned Sessions are not scored and nothing about them is stored beyond the fact that they ended abandoned.
 - **What is persisted** (by the web server, not here): the result summary (CPM, WPM, elapsed time, saccades, regressions, skipped characters) and the fixation sequence. Calibration samples, the personalized model and raw feature streams are never stored.
 
-See ADR 0003 for why the system is split this way.
+See ADR 0003 for why the system is split this way, and ADR 0004 for the one place feature maths runs in the browser.
 
 ## 1. Webcam
 
@@ -75,7 +75,7 @@ Use MediaPipe Face Landmarker, **running in the browser** (MediaPipe Tasks Web),
 
 MediaPipe does not directly determine which Braille character the learner is looking at. It provides the visual features needed by the gaze model.
 
-The browser sends this service only the landmark subset the features need, plus the facial transformation matrix. `eye_features.py` (`extract_features`) stays in this service so the 20-value feature definition has a single implementation and the model's inputs can change without a frontend release.
+The browser sends this service only the landmark subset the features need, plus the facial transformation matrix. On protocol version 2 it also sends a per-eye centre it located with the Timm & Barth gradient method on a small eye crop, so no pixels leave the browser (ADR 0004, [docs/eye-centre.md](./docs/eye-centre.md)); the service appends them to the feature vector (24 values instead of 20) and falls back to the landmark mean when the browser's confidence is low. `eye_features.py` (`extract_features`) stays in this service so the 20-value feature definition has a single implementation and the model's inputs can change without a frontend release.
 
 ## 3. Modified WebEyeTrack ("BlazeGaze") = gaze estimator
 

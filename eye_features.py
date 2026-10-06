@@ -20,6 +20,14 @@ EYE_CORNER_IDS = [LEFT_EYE_CORNERS[k] for k in ("left", "right", "top", "bottom"
 
 FEATURE_SIZE = 20
 
+# Protocol version 2 appends the browser's eye centre (Timm & Barth) per eye,
+# normalized like the iris: left eye (x, y), then right eye (x, y).
+FEATURE_SIZE_V2 = 24
+
+# Below this the browser's eye centre is not trusted and the landmark mean
+# stands in for it. Tunable here without a frontend release.
+EYE_CENTRE_MIN_CONFIDENCE = 0.5
+
 
 def landmark_xy(p):
 
@@ -139,12 +147,45 @@ def _pose_matrix(matrix):
     return array
 
 
-def extract_features(frame):
+def _eye_centre_features(frame, iris, corners):
+    """The 4 values protocol version 2 appends: per eye, the browser's eye
+    centre normalized against that eye's corners. An eye whose centre is
+    missing, below EYE_CENTRE_MIN_CONFIDENCE or off the image uses the mean of
+    its iris landmarks instead, so the vector keeps its size."""
+
+    centres = getattr(frame, "eye_centres", None)
+
+    values = []
+
+    for eye in range(2):
+        eye_iris = iris[eye * 4:eye * 4 + 4]
+        eye_corners = corners[eye * 4:eye * 4 + 4]
+
+        position = iris_center(eye_iris)
+
+        if centres is not None and len(centres) == 2:
+            centre = centres[eye]
+            if (centre.confidence >= EYE_CENTRE_MIN_CONFIDENCE
+                    and _usable_landmarks([centre], 1)):
+                position = landmark_xy(centre)
+
+        left, right, top, bottom = (landmark_xy(p) for p in eye_corners)
+        values.append(normalize_iris(position, left, right, top, bottom))
+
+    return np.concatenate(values)
+
+
+def extract_features(frame, use_eye_centres=False):
     """Builds the eye-appearance + head-pose + face-position feature vector
     (see architecture-design.md step 3) from one browser `frame` message
     (protocol.Frame): 8 iris landmarks, 8 eye-corner landmarks, the nose tip
     and the 4x4 facial transformation matrix (row-major). Returns None
     ("no face") if any of them is missing or unusable.
+
+    `use_eye_centres` selects the protocol version 2 vector (FEATURE_SIZE_V2):
+    the version 1 vector followed by the eye centres from `frame.eye_centres`.
+    The Session manager sets it from the negotiated version, so a Session never
+    mixes vector sizes.
     """
 
     if frame is None:
@@ -173,11 +214,16 @@ def extract_features(frame):
     rotation = matrix[:3, :3].flatten()
     translation = matrix[:3, 3]
 
-    return np.concatenate([
+    parts = [
         left_norm,
         right_norm,
         [left_ear, right_ear],
         rotation,
         translation,
         landmark_xy(nose),
-    ]).astype(np.float32)
+    ]
+
+    if use_eye_centres:
+        parts.append(_eye_centre_features(frame, iris, corners))
+
+    return np.concatenate(parts).astype(np.float32)

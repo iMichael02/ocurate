@@ -182,3 +182,101 @@ def test_does_not_modify_the_frame():
     extract_features(frame)
 
     assert frame.model_dump() == before
+
+
+# --- eye centres from the browser (protocol v2) -------------------------------
+
+from eye_features import EYE_CENTRE_MIN_CONFIDENCE, FEATURE_SIZE_V2
+
+
+def _centres(left=(0.34, 0.41), right=(0.66, 0.39), confidence=0.9):
+
+    return [
+        {"x": left[0], "y": left[1], "confidence": confidence},
+        {"x": right[0], "y": right[1], "confidence": confidence},
+    ]
+
+
+def test_v2_feature_size_extends_the_v1_vector():
+
+    assert FEATURE_SIZE == 20
+    assert FEATURE_SIZE_V2 == 24
+
+
+def test_v1_extraction_ignores_eye_centres():
+
+    with_centres = extract_features(_frame(eye_centres=_centres()))
+    without = extract_features(_frame())
+
+    np.testing.assert_array_equal(with_centres, without)
+    assert with_centres.shape == (FEATURE_SIZE,)
+
+
+def test_v2_vector_starts_with_the_v1_vector():
+
+    frame = _frame(eye_centres=_centres())
+
+    v1 = extract_features(frame)
+    v2 = extract_features(frame, use_eye_centres=True)
+
+    assert v2.shape == (FEATURE_SIZE_V2,)
+    assert v2.dtype == np.float32
+    np.testing.assert_array_equal(v2[:FEATURE_SIZE], v1)
+
+
+def test_v2_appends_the_centre_position_normalized_per_eye():
+
+    # Left eye spans x 0.3-0.4 (corners 362, 263), top/bottom y 0.35-0.45;
+    # right eye spans x 0.6-0.7 (corners 133, 33).
+    features = extract_features(_frame(eye_centres=_centres(left=(0.34, 0.41), right=(0.66, 0.39))),
+                                use_eye_centres=True)
+
+    assert features[20:24] == pytest.approx([0.4, 0.6, 0.6, 0.4], abs=1e-5)
+
+
+def test_v2_low_confidence_centre_falls_back_to_the_landmark_mean():
+
+    low = EYE_CENTRE_MIN_CONFIDENCE - 0.01
+    features = extract_features(_frame(eye_centres=_centres(confidence=low)), use_eye_centres=True)
+
+    np.testing.assert_array_equal(features[20:24], features[0:4])
+
+
+def test_v2_confidence_exactly_at_the_threshold_is_used():
+
+    features = extract_features(_frame(eye_centres=_centres(confidence=EYE_CENTRE_MIN_CONFIDENCE)),
+                                use_eye_centres=True)
+
+    assert features[20:24] == pytest.approx([0.4, 0.6, 0.6, 0.4], abs=1e-5)
+
+
+def test_v2_falls_back_per_eye():
+
+    centres = _centres()
+    centres[1]["confidence"] = 0.0
+    features = extract_features(_frame(eye_centres=centres), use_eye_centres=True)
+
+    assert features[20:22] == pytest.approx([0.4, 0.6], abs=1e-5)
+    np.testing.assert_array_equal(features[22:24], features[2:4])
+
+
+def test_v2_without_eye_centres_falls_back_to_the_landmark_mean():
+
+    features = extract_features(_frame(), use_eye_centres=True)
+
+    assert features.shape == (FEATURE_SIZE_V2,)
+    np.testing.assert_array_equal(features[20:24], features[0:4])
+
+
+def test_v2_off_image_centre_falls_back_like_a_low_confidence_one():
+
+    # Landmarks may lie slightly outside the image; a centre there is not trusted.
+    features = extract_features(_frame(eye_centres=_centres(left=(-0.1, 0.41))), use_eye_centres=True)
+
+    np.testing.assert_array_equal(features[20:22], features[0:2])
+
+
+def test_v2_still_returns_none_for_no_face():
+
+    assert extract_features(_frame(nose={"x": 1.2, "y": 0.5}), use_eye_centres=True) is None
+    assert extract_features(None, use_eye_centres=True) is None
