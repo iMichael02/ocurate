@@ -78,29 +78,3 @@ def get_passage(passage_id):
         return PASSAGES[passage_id]
     except KeyError:
         raise UnknownPassageError(passage_id) from None
-
-
-def passage_summary(passage_id, passage):
-    """What the browser and web server need to render a Passage and know its
-    ground truth. The counts are the Passage's own, the same ones Reading
-    Speed divides by; nothing here derives them from the grid size."""
-
-    first_row, first_col = passage.first_cell
-    last_row, last_col = passage.last_cell
-
-    return {
-        "id": passage_id,
-        "lines": list(passage.lines),
-        "braille_lines": list(passage.braille_lines),
-        "rows": passage.num_rows,
-        "columns": passage.num_columns,
-        "char_count": passage.char_count,
-        "word_count": passage.word_count,
-        "first_cell": {"row": first_row, "col": first_col},
-        "last_cell": {"row": last_row, "col": last_col},
-    }
-
-
-def list_passages():
-
-    return [passage_summary(passage_id, passage) for passage_id, passage in PASSAGES.items()]
