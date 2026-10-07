@@ -24,7 +24,7 @@ The schemas check the shape of one message. Rules that depend on Session state a
 
 ## Version handshake
 
-- The service supports a set of versions, initially `{1}`.
+- The service supports a set of versions: `{1, 2}`. Version 2 adds `frame.eye_centres` (see [eye-centre.md](./eye-centre.md)); everything else is identical.
 - `hello` is the first message and carries `version` and `token`.
 - The version is checked before the token. If supported, the service replies `hello_ack`. Otherwise it sends `error{code: "unsupported_version", supported: [...]}` and closes with `4409`.
 
@@ -34,7 +34,7 @@ The schemas check the shape of one message. Rules that depend on Session state a
 |---|---|
 | `hello` | `version` (int), `token` (string) |
 | `layout` | `viewport`: `{width, height}` (px, > 0). `cells`: list of `{row, col, x, y, w, h}`, rectangle in 0–1 (viewport-normalized), `w` and `h` > 0, inside the viewport. Must cover every Cell of the Passage with no duplicate (row, col). Sent once, before calibration. |
-| `frame` | `t` (ms, finite). `iris`: 8 × `{x, y}`. `eye_corners`: 8 × `{x, y}`. `nose`: `{x, y}`. `matrix`: 4 × 4 numbers (4 rows of 4). `target`: optional `{x, y}`, present only during calibration. |
+| `frame` | `t` (ms, finite). `iris`: 8 × `{x, y}`. `eye_corners`: 8 × `{x, y}`. `nose`: `{x, y}`. `matrix`: 4 × 4 numbers (4 rows of 4). `target`: optional `{x, y}`, present only during calibration. `eye_centres`: optional (version 2 only), 2 × `{x, y, confidence}`, left eye then right eye, `x` and `y` like a landmark, `confidence` in 0–1. A Session on version 1 that sends `eye_centres` gets `invalid_message` (Session manager rule). |
 | `calibration_restart` | none. Only valid after a `failed` outcome with attempts left. Discards the failed attempt's samples. |
 | `calibration_done` | none |
 | `viewport_changed` | none |
@@ -50,7 +50,7 @@ Landmark `x` and `y` are MediaPipe's values, normalized to the camera image (not
 
 `matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that, as far as we recall, is column-major, so the browser must transpose while reshaping. Verify against real MediaPipe output when the frontend is built, and correct this note if it is wrong.
 
-Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (17 of 478 landmarks, no `z`, no blendshapes), plus `t` and the optional `target`.
+Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (17 of 478 landmarks, no `z`, no blendshapes), plus `t`, the optional `target` and, on version 2, the browser-computed `eye_centres`.
 
 ## Service → browser
 

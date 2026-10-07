@@ -15,10 +15,10 @@ Before the socket opens, the web server has called `POST /sessions` and handed t
 **service → browser**
 
 ```json server
-{"type":"hello_ack","version":1,"supported":[1]}
+{"type":"hello_ack","version":1,"supported":[1,2]}
 ```
 
-If the browser had sent `version: 2`, the service would answer `{"type":"error","code":"unsupported_version","message":"Protocol version 2 is not supported","supported":[1]}` and close the socket with `4409`.
+If the browser had sent `version: 3`, the service would answer `{"type":"error","code":"unsupported_version","message":"Protocol version 3 is not supported","supported":[1,2]}` and close the socket with `4409`.
 
 ## 2. Layout
 

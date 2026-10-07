@@ -56,11 +56,15 @@ def calibration_status(**overrides):
 RESULT = {"elapsed_seconds": 12.5, "cpm": 240.0, "wpm": 48.0, "saccades": 20,
           "regressions": 2, "skipped_characters": 1, "sequence": [{"row": 0, "col": 0}]}
 
+EYE_CENTRES = [{"x": 0.35, "y": 0.4, "confidence": 0.8}, {"x": 0.65, "y": 0.4, "confidence": 0.0}]
+
 CLIENT_VALID = {
     "hello": {"type": "hello", "version": 1, "token": "abc"},
+    "hello v2": {"type": "hello", "version": 2, "token": "abc"},
     "layout": layout(),
     "frame": frame(),
     "frame with target": frame(target={"x": 0.1, "y": 0.9}),
+    "frame with eye_centres": frame(eye_centres=EYE_CENTRES),
     "calibration_restart": {"type": "calibration_restart"},
     "calibration_done": {"type": "calibration_done"},
     "viewport_changed": {"type": "viewport_changed"},
@@ -129,6 +133,13 @@ CLIENT_INVALID = {
     "layout zero viewport": with_change(CLIENT_VALID["layout"], ["viewport", "width"], 0),
     "layout missing viewport": with_change(CLIENT_VALID["layout"], ["viewport"], DELETE),
     # frame
+    "frame eye_centres one": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres"], EYE_CENTRES[:1]),
+    "frame eye_centres three": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres"], EYE_CENTRES * 2),
+    "frame eye_centres no confidence": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres", 0, "confidence"], DELETE),
+    "frame eye_centres confidence above 1": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres", 0, "confidence"], 1.01),
+    "frame eye_centres confidence below 0": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres", 1, "confidence"], -0.1),
+    "frame eye_centres out of range": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres", 0, "x"], 1.6),
+    "frame eye_centres extra field": with_change(CLIENT_VALID["frame with eye_centres"], ["eye_centres", 0, "z"], 0.1),
     "frame iris too few": with_change(CLIENT_VALID["frame"], ["iris"], landmarks(7)),
     "frame iris too many": with_change(CLIENT_VALID["frame"], ["iris"], landmarks(9)),
     "frame corners too few": with_change(CLIENT_VALID["frame"], ["eye_corners"], landmarks(4)),
@@ -263,9 +274,10 @@ def test_every_message_type_has_valid_and_invalid_examples():
 
 
 def test_version_negotiation():
-    assert protocol.SUPPORTED_VERSIONS == (1,)
+    assert protocol.SUPPORTED_VERSIONS == (1, 2)
     assert protocol.negotiate_version(1) == 1
-    assert protocol.negotiate_version(2) is None
+    assert protocol.negotiate_version(2) == 2
+    assert protocol.negotiate_version(3) is None
     assert protocol.negotiate_version(0) is None
 
 
