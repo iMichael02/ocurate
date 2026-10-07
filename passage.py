@@ -52,3 +52,29 @@ def build_default_passage():
         "with your eyes",
         "and count them",
     ])
+
+
+class UnknownPassageError(KeyError):
+    """No Passage is registered under the requested id."""
+
+    def __init__(self, passage_id):
+
+        self.passage_id = passage_id
+        super().__init__(passage_id)
+
+
+# The Grade 1 Passages this service serves, by id. Ids are stable: the web
+# server stores them with each Session's result.
+PASSAGES = {
+    "default": build_default_passage(),
+}
+
+
+def get_passage(passage_id):
+    """The Passage registered under `passage_id`. Raises UnknownPassageError,
+    which Session creation uses to reject an unknown id."""
+
+    try:
+        return PASSAGES[passage_id]
+    except KeyError:
+        raise UnknownPassageError(passage_id) from None

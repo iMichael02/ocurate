@@ -27,13 +27,14 @@ Pure logic, reused by the service:
 - `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
 - `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
 - `passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
+- `schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
 - `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
 Needs changing:
 
 - `calibration.py` — still has the 9-point grid and the uniform-grid `gaze_to_braille_cell`. Target: a 16-point (4×4) grid, and Cell mapping from the browser-reported Cell Layout rectangles.
 
-Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, `GET /passages/{id}`, the token check and the signed result callback.
+Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, the token check and the signed result callback.
 
 ## Testing
 
