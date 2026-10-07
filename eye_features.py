@@ -4,7 +4,7 @@ import numpy as np
 
 # MediaPipe Face Landmarker ids of the landmark subset the browser sends. The
 # order of these lists is the order of `frame.iris` and `frame.eye_corners`
-# (see protocol.py and docs/websocket-protocol.md). Only the order matters to
+# (see schemas/protocol.py and docs/websocket-protocol.md). Only the order matters to
 # this module; the ids document where each value comes from.
 LEFT_IRIS = [474, 475, 476, 477]
 RIGHT_IRIS = [469, 470, 471, 472]

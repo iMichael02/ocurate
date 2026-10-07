@@ -1,6 +1,6 @@
 # Example Session transcript
 
-One complete Session as seen on the WebSocket, over protocol version 1. It is illustrative: the Passage is two lines of nine Cells, landmark values are made up, and runs of similar `frame` messages are shortened to the first and last of each run. Every message in a `json client` or `json server` block is validated against `protocol.py` by `tests/test_protocol.py`, so this document cannot drift from the schemas. See [websocket-protocol.md](./websocket-protocol.md) for the rules.
+One complete Session as seen on the WebSocket, over protocol version 1. It is illustrative: the Passage is two lines of nine Cells, landmark values are made up, and runs of similar `frame` messages are shortened to the first and last of each run. Every message in a `json client` or `json server` block is validated against `schemas/protocol.py` by `tests/test_protocol.py`, so this document cannot drift from the schemas. See [websocket-protocol.md](./websocket-protocol.md) for the rules.
 
 Before the socket opens, the web server has called `POST /sessions` and handed the browser a session id and a short-lived token. The browser has fetched the Passage from `GET /passages/{id}` and rendered it.
 
