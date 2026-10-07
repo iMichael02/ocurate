@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import protocol
-from protocol import ProtocolError, parse_client_message, parse_server_message, serialize
+from schemas import protocol
+from schemas.protocol import ProtocolError, parse_client_message, parse_server_message, serialize
 
 
 def landmarks(count, value=0.5):
