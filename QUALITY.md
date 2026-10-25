@@ -32,11 +32,11 @@
 > - ✅ "Detection recall ≥ 80 % on the incidents of the held-out period."
 > - ✅ "A report is generated in < 10 s for one year of data on the client's laptop."
 
-| ID   | Requirement | Characteristic | Metric & threshold | Why it matters (client need) | Validated by client? |
-| ---- | ----------- | -------------- | ------------------ | ---------------------------- | -------------------- |
-| Q-01 |             |                |                    |                              | ☐ (date / who)       |
-| Q-02 |             |                |                    |                              | ☐                    |
-| Q-03 |             |                |                    |                              | ☐                    |
+| ID   | Requirement                | Characteristic                         | Metric & threshold | Why it matters (client need)                                                                             | Validated by client? |
+| ---- | -------------------------- | -------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- | -------------------- |
+| Q-01 | Web UI for the application | An easy to use UI for Braille learners | None               | The UI is a need for the application to function and it needs to be clean and easy to use for most users | ✅ Oct 9 by client   |
+| Q-02 |                            |                                        |                    |                                                                                                          | ☐                    |
+| Q-03 |                            |                                        |                    |                                                                                                          | ☐                    |
 
 ## 2. Verification (Q2 → Q3)
 
@@ -46,11 +46,11 @@
 > For data/ML work, describe the protocol: dataset split, no leakage, baseline, and metric defined **before** looking at the results.
 > A verification is **relevant** if passing it shows the requirement is met, not just that something ran: same metric and threshold as §1, runnable before the demo.
 
-| ID   | Verification method | Pass criterion | When (automatic / each sprint / before demo) | Owner | Result            | Evidence                                       |
-| ---- | ------------------- | -------------- | -------------------------------------------- | ----- | ----------------- | ---------------------------------------------- |
-| Q-01 |                     |                |                                              |       | ⏳ / ✅ / ⚠️ / ❌ | link to test, CI run, notebook, report, commit |
-| Q-02 |                     |                |                                              |       |                   |                                                |
-| Q-03 |                     |                |                                              |       |                   |                                                |
+| ID   | Verification method                            | Pass criterion                            | When (automatic / each sprint / before demo) | Owner      | Result | Evidence                                               |
+| ---- | ---------------------------------------------- | ----------------------------------------- | -------------------------------------------- | ---------- | ------ | ------------------------------------------------------ |
+| Q-01 | Mock up UI design to get client approval first | Client approves                           | Before implementation                        | Minh       | ✅     | [ocurate-fe](https://github.com/iMichael02/ocurate-fe) |
+| Q-02 | Static UI implementation                       | Static UI is implemented as agreed design | Before presenting to client                  | Whole team | ✅     | [ocurate-fe](https://github.com/iMichael02/ocurate-fe) |
+| Q-03 |                                                |                                           |                                              |            |        |                                                        |
 
 > Status: ⏳ not run yet · ✅ pass · ⚠️ partial · ❌ fail (say what you'll do about it in §3)
 
@@ -58,19 +58,18 @@
 
 > 3–5 lines: what was added or checked, what failed, what you'll change. Mention what you showed the client on Friday.
 
-### Week of DD/MM
+### Week of 05/10
 
-- Added:
-- Checked:
-- Shown to client:
-- Next:
+- Added: Front-end repository
+- Shown to client: Static web UI for Braille learners
+- Next: Connect front-end and back-end with JWT authentication and websocket
 
 ## 4. Data & confidentiality rules
 
 > Fill this in once and keep it up to date. It is part of Q1 (security) and protects you on CP2.
 
-- Data that must **never** be committed (paths, file types): …
-- Where the data actually lives (who has access): …
-- Tools/services **not** allowed by the client (e.g. public AI services): …
-- Personal data involved (GDPR) and how it is handled: …
-- Matching `.gitignore` entries are in place: ☐
+- Data that must **never** be committed (paths, file types): Image files excluding .svg and .ico
+- Where the data actually lives (who has access): MySQL database
+- Tools/services **not** allowed by the client (e.g. public AI services): None
+- Personal data involved (GDPR) and how it is handled: Client only send calculated coordinates of points of interests to the server. No user image is stored.
+- Matching `.gitignore` entries are in place: Yes
