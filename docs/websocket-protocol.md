@@ -48,7 +48,7 @@ The schemas check the shape of one message. Rules that depend on Session state a
 
 Landmark `x` and `y` are MediaPipe's values, normalized to the camera image (not the viewport), and are sent unchanged. They can fall slightly outside 0–1 when the face is partly out of frame, so the accepted range is **−0.5 to 1.5**. Values outside it are rejected (`invalid_message`). Values inside the margin but outside 0–1 are valid input; the feature code treats such frames as unusable rather than the protocol rejecting them. `target` and `layout` coordinates are viewport-normalized and must be strictly within 0–1. `z` is not sent (the current features do not use it).
 
-`matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that, as far as we recall, is column-major, so the browser must transpose while reshaping. Verify against real MediaPipe output when the frontend is built, and correct this note if it is wrong.
+`matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that is column-major (confirmed on real output: translation in indices 12-14, `[3]`, `[7]`, `[11]` are 0, `[15]` is 1), so the browser must transpose while reshaping.
 
 Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (17 of 478 landmarks, no `z`, no blendshapes), plus `t`, the optional `target` and, on version 2, the browser-computed `eye_centres`.
 

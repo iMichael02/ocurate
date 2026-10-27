@@ -17,7 +17,7 @@ Per eye, from the four corner landmarks already sent in `eye_corners` (left, rig
 
 As in `eye_centre.py`, which is authoritative: central-difference gradients, keep those stronger than mean + 0.3 × std of the magnitudes, score every pixel as a centre by how well its displacement vectors align with the gradients (negative alignment counts as 0, squared, averaged), weight by darkness (Gaussian-blurred, σ = 1 px), take the maximum.
 
-Output is `(x, y, confidence)`: `x` and `y` in 0–1 of the crop, `confidence` in 0–1 (1 minus the best peak further than 5 px away, relative to the best; 0 for a crop without gradients).
+Output is `(x, y, confidence)`: `x` and `y` in 0–1 of the crop, `confidence` in 0–1 (1 minus the best peak further than 10 px away, relative to the best; 0 for a crop without gradients). The 10 px must exceed the iris radius in the crop (5-8 px), otherwise the iris rim counts as a rival peak and confidence stays low on a correctly located centre.
 
 ## Mapping back
 
