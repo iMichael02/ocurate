@@ -26,7 +26,7 @@ FEATURE_SIZE_V2 = 24
 
 # Below this the browser's eye centre is not trusted and the landmark mean
 # stands in for it. Tunable here without a frontend release.
-EYE_CENTRE_MIN_CONFIDENCE = 0.5
+EYE_CENTRE_MIN_CONFIDENCE = 0.3
 
 # A centre that lies further than this from the mean of the eye's iris
 # landmarks, measured across the eye in eye widths and up/down in eye heights

@@ -322,3 +322,12 @@ def test_v2_offset_gate_applies_per_eye():
 
     assert features[20:22] == pytest.approx([0.4, 0.6], abs=1e-5)
     np.testing.assert_array_equal(features[22:24], features[2:4])
+
+
+def test_v2_uses_a_centre_with_confidence_0_35_but_not_0_25():
+
+    used = extract_features(_frame(eye_centres=_centres(confidence=0.35)), use_eye_centres=True)
+    ignored = extract_features(_frame(eye_centres=_centres(confidence=0.25)), use_eye_centres=True)
+
+    assert used[20:24] == pytest.approx([0.4, 0.6, 0.6, 0.4], abs=1e-5)
+    np.testing.assert_array_equal(ignored[20:24], ignored[0:4])
