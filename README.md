@@ -9,6 +9,17 @@ python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
 
+## Database
+
+Passages are read from MySQL. Create an empty database, set `OCURATE_DATABASE_URL`, then create the `passages` table and insert the default Passage (safe to re-run):
+
+```
+export OCURATE_DATABASE_URL="mysql+pymysql://user:password@localhost:3306/ocurate"
+venv/bin/python passage_store.py
+```
+
+The tests use a temporary SQLite database and need no MySQL server.
+
 ## Run
 
 ```
@@ -33,6 +44,7 @@ All settings are environment variables. Unset or empty values use the default.
 | `OCURATE_TOKEN_SECRET` | unset | Secret used to sign Session tokens |
 | `OCURATE_CALLBACK_URL` | unset | Web-server URL that receives results |
 | `OCURATE_CALLBACK_SECRET` | unset | Shared secret that signs result callbacks |
+| `OCURATE_DATABASE_URL` | unset | SQLAlchemy URL of the MySQL database holding the Passages; the `/passages` endpoints answer 503 while unset |
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | How long a Session token stays valid |
 | `OCURATE_SESSION_INACTIVITY_SECONDS` | `30` | Seconds without frames before a Session is abandoned |
 | `OCURATE_MAX_MESSAGE_BYTES` | `65536` | Largest accepted WebSocket message |

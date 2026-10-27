@@ -55,29 +55,13 @@ def build_default_passage():
 
 
 class UnknownPassageError(KeyError):
-    """No Passage is registered under the requested id."""
+    """No Passage is stored under the requested id. Ids are stable: the web
+    server stores them with each Session's result."""
 
     def __init__(self, passage_id):
 
         self.passage_id = passage_id
         super().__init__(passage_id)
-
-
-# The Grade 1 Passages this service serves, by id. Ids are stable: the web
-# server stores them with each Session's result.
-PASSAGES = {
-    "default": build_default_passage(),
-}
-
-
-def get_passage(passage_id):
-    """The Passage registered under `passage_id`. Raises UnknownPassageError,
-    which Session creation uses to reject an unknown id."""
-
-    try:
-        return PASSAGES[passage_id]
-    except KeyError:
-        raise UnknownPassageError(passage_id) from None
 
 
 def passage_summary(passage_id, passage):
@@ -99,8 +83,3 @@ def passage_summary(passage_id, passage):
         "first_cell": {"row": first_row, "col": first_col},
         "last_cell": {"row": last_row, "col": last_col},
     }
-
-
-def list_passages():
-
-    return [passage_summary(passage_id, passage) for passage_id, passage in PASSAGES.items()]

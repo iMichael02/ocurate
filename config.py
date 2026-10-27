@@ -17,6 +17,7 @@ class Settings:
     token_secret: Optional[str] = None
     callback_url: Optional[str] = None
     callback_secret: Optional[str] = None
+    database_url: Optional[str] = None
 
     token_ttl_seconds: int = 60
     session_inactivity_seconds: float = 30.0
@@ -50,6 +51,7 @@ def load_settings():
         token_secret=_read("TOKEN_SECRET", str, defaults.token_secret),
         callback_url=_read("CALLBACK_URL", str, defaults.callback_url),
         callback_secret=_read("CALLBACK_SECRET", str, defaults.callback_secret),
+        database_url=_read("DATABASE_URL", str, defaults.database_url),
         token_ttl_seconds=_read("TOKEN_TTL_SECONDS", int, defaults.token_ttl_seconds),
         session_inactivity_seconds=_read("SESSION_INACTIVITY_SECONDS", float, defaults.session_inactivity_seconds),
         max_message_bytes=_read("MAX_MESSAGE_BYTES", int, defaults.max_message_bytes),
