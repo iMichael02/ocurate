@@ -14,10 +14,13 @@ The old standalone OpenCV app has been removed. The service skeleton exists; the
 
 Service skeleton:
 
-- `app.py` — FastAPI app factory (`create_app`) with `GET /health`
+- `app.py` — FastAPI app factory (`create_app`) with `GET /health`, the Passage endpoints and the routers below
 - `config.py` — `Settings`, read from `OCURATE_*` environment variables
 - `schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
 - `sessions_api.py` — `POST /sessions` (API key, then Passage lookup, then a signed single-use token); `schemas/sessions.py` holds its request and response; see docs/t9-sessions.md
+- `ws_api.py` — the `/ws` WebSocket route: checks the token, loads the Passage, feeds each message to a `Session` and sends its replies; calls `app.state.on_session_finished(outcome)` when a Session ends
+- `session_manager.py` — `Session`: the per-socket state machine (hello → layout → calibration with retries → reading → completed/abandoned). No I/O, so tests drive it with plain messages
+- `cell_layout.py` — `cell_at`: maps a gaze point to a Cell from the browser-reported Layout rectangles
 - `tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
 - `log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
@@ -35,15 +38,11 @@ Pure logic, reused by the service:
 
 - `calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
-Needs changing:
-
-- `calibration.py` — `gaze_to_braille_cell` still uses the uniform grid. Target: Cell mapping from the browser-reported Cell Layout rectangles.
-
-Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint (it will call `TokenStore.verify_and_consume_token`) and the signed result callback.
+Not written yet: the signed result callback (hook: `app.state.on_session_finished`), frame-rate limiting, and a cap on live Sessions.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `POST /sessions` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 

@@ -21,6 +21,20 @@ CALIBRATION_POINTS = [
 ]
 
 
+def target_index(target, tolerance=0.05):
+    """Index of the calibration point nearest to `target` (an object with x
+    and y), or None if none lies within `tolerance` on both axes."""
+
+    best = min(range(len(CALIBRATION_POINTS)),
+               key=lambda i: abs(CALIBRATION_POINTS[i][0] - target.x) + abs(CALIBRATION_POINTS[i][1] - target.y))
+    x, y = CALIBRATION_POINTS[best]
+
+    if abs(x - target.x) > tolerance or abs(y - target.y) > tolerance:
+        return None
+
+    return best
+
+
 @dataclass(frozen=True)
 class TargetStatus:
     index: int
@@ -49,6 +63,24 @@ class Calibration:
         """Starts a new attempt from empty samples."""
 
         self._samples = {index: [] for index in range(len(CALIBRATION_POINTS))}
+
+    def progress(self, current_index):
+        """Per-target status while the attempt is running: targets before
+        `current_index` are ok or skipped, the current one is collecting, the
+        rest are pending."""
+
+        statuses = []
+
+        for index, samples in self._samples.items():
+            if index < current_index:
+                state = "ok" if samples else "skipped"
+            elif index == current_index:
+                state = "collecting"
+            else:
+                state = "pending"
+            statuses.append(TargetStatus(index, state, len(samples)))
+
+        return statuses
 
     def add_frame(self, target, features):
 
@@ -87,27 +119,3 @@ class Calibration:
         model.train(np.array(X), np.array(y))
 
         return CalibrationResult(points, "ready", None, model)
-
-
-def gaze_to_braille_cell(
-    gaze_x,
-    gaze_y,
-    screen_width,
-    screen_height,
-    cell_width,
-    line_height,
-    num_rows,
-    num_columns
-):
-
-    px = gaze_x * screen_width
-    py = gaze_y * screen_height
-
-    column = int(px / cell_width)
-
-    row = int(py / line_height)
-
-    column = min(max(column, 0), num_columns - 1)
-    row = min(max(row, 0), num_rows - 1)
-
-    return row, column
