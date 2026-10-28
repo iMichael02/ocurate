@@ -4,6 +4,8 @@ from config import Settings, load_settings
 from log_setup import configure_logging
 from passage import PASSAGES, UnknownPassageError, get_passage
 from schemas.passage import PassageSummary, passage_summary
+from sessions_api import router as sessions_router
+from tokens import build_token_store
 
 
 def create_app(settings=None):
@@ -14,6 +16,8 @@ def create_app(settings=None):
 
     app = FastAPI(title="Ocurate gaze-analysis service")
     app.state.settings = settings
+    # T8 checks WebSocket tokens with app.state.tokens.verify_and_consume_token.
+    app.state.tokens = build_token_store(settings)
 
     @app.get("/health")
     def health():
@@ -32,6 +36,8 @@ def create_app(settings=None):
             return passage_summary(passage_id, get_passage(passage_id))
         except UnknownPassageError:
             raise HTTPException(status_code=404, detail="unknown passage id")
+
+    app.include_router(sessions_router)
 
     return app
 
