@@ -11,12 +11,24 @@ venv/bin/pip install -r requirements.txt
 
 ## Database
 
-Passages are read from MySQL. Create an empty database, set `OCURATE_DATABASE_URL`, then create the `passages` table and insert the default Passage (safe to re-run):
+Passages are read from MySQL. `compose.yaml` runs one locally, with an `ocurate` database kept in the `mysql-data` volume. Choose the credentials through environment variables (or a `.env` file next to `compose.yaml`, which git ignores). They take effect the first time the volume is created:
 
 ```
-export OCURATE_DATABASE_URL="mysql+pymysql://user:password@localhost:3306/ocurate"
+export MYSQL_USER=ocurate
+export MYSQL_PASSWORD=choose-a-password
+docker compose up -d --wait
+```
+
+If port 3306 is already taken, set `MYSQL_PORT` to another host port and use that port in the URL below.
+
+Point the service at it, then create the `passages` table and insert the default Passage (safe to re-run):
+
+```
+export OCURATE_DATABASE_URL="mysql+pymysql://$MYSQL_USER:$MYSQL_PASSWORD@127.0.0.1:${MYSQL_PORT:-3306}/ocurate"
 venv/bin/python passage_store.py
 ```
+
+Stop the container with `docker compose down`; the data stays in the volume. `docker compose down -v` also deletes it.
 
 The tests use a temporary SQLite database and need no MySQL server.
 
