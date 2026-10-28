@@ -8,7 +8,7 @@ import pytest
 
 from config import Settings
 from tokens import (InvalidSignature, SessionGrant, TokenAlreadyUsed, TokenExpired, TokenStore,
-                    UnknownSession, build_token_store)
+                    TooManySessions, UnknownSession, build_token_store)
 
 SECRET = "test-token-secret"
 
@@ -43,16 +43,32 @@ def encode_payload(claims):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
-def test_token_holds_session_id_passage_id_expiry_and_token_id():
+def test_token_holds_only_expiry_and_token_id():
 
     issued = make_store(FakeClock(1000.0)).create_session("default")
 
     claims = decode_payload(issued.token)
 
-    assert claims["sid"] == issued.session_id
-    assert claims["pid"] == "default"
+    assert set(claims) == {"exp", "jti"}
     assert claims["exp"] == 1060 == issued.expires_at
-    assert claims["jti"]
+
+
+def test_expiry_is_rounded_up_so_the_token_lives_its_full_lifetime():
+
+    issued = make_store(FakeClock(1000.9), ttl=60).create_session("default")
+
+    assert issued.expires_at == 1061
+
+
+def test_a_one_second_token_is_valid_for_at_least_a_second():
+
+    clock = FakeClock(1000.9)
+    store = make_store(clock, ttl=1)
+    issued = store.create_session("default")
+
+    clock.now = 1001.5
+
+    assert store.verify_and_consume_token(issued.token).session_id == issued.session_id
 
 
 def test_session_ids_and_token_ids_are_unique():
@@ -150,12 +166,12 @@ def test_expired_token_is_refused(later):
 def test_changed_payload_is_refused():
 
     store = make_store()
-    store.create_session("other")
+    other = store.create_session("other")
     issued = store.create_session("default")
     signature_part = issued.token.split(".")[1]
 
     claims = decode_payload(issued.token)
-    claims["pid"] = "other"
+    claims["jti"] = decode_payload(other.token)["jti"]
 
     with pytest.raises(InvalidSignature):
         store.verify_and_consume_token(encode_payload(claims) + "." + signature_part)
@@ -219,6 +235,59 @@ def test_token_from_before_a_restart_is_unknown():
 
     with pytest.raises(UnknownSession):
         make_store(clock).verify_and_consume_token(token)
+
+
+def test_token_with_wrongly_typed_claims_is_refused():
+
+    store = make_store()
+    token = store.create_session("default").token
+
+    for claims in ({"exp": "1060", "jti": "x"}, {"exp": 1060, "jti": 5}, {"exp": 1060}):
+        payload_part = encode_payload(claims)
+        forged = payload_part + "." + store._signature(payload_part)
+
+        with pytest.raises(InvalidSignature):
+            store.verify_and_consume_token(forged)
+
+    assert store.verify_and_consume_token(token)
+
+
+def test_pending_sessions_are_capped():
+
+    store = TokenStore(SECRET, 60, FakeClock(), max_pending=2)
+    store.create_session("default")
+    store.create_session("default")
+
+    with pytest.raises(TooManySessions):
+        store.create_session("default")
+
+
+def test_a_used_token_frees_a_pending_slot():
+
+    store = TokenStore(SECRET, 60, FakeClock(), max_pending=1)
+    issued = store.create_session("default")
+    store.verify_and_consume_token(issued.token)
+
+    store.create_session("default")
+
+
+def test_expired_pending_sessions_free_their_slots():
+
+    clock = FakeClock(1000.0)
+    store = TokenStore(SECRET, 60, clock, max_pending=1)
+    store.create_session("default")
+    clock.now = 1060.0
+
+    store.create_session("default")
+
+
+def test_build_caps_pending_sessions_at_the_concurrent_session_setting():
+
+    store = build_token_store(Settings(token_secret=SECRET, max_concurrent_sessions=1))
+
+    store.create_session("default")
+    with pytest.raises(TooManySessions):
+        store.create_session("default")
 
 
 def test_errors_have_distinct_codes():
@@ -289,7 +358,7 @@ def test_build_in_dev_mode_generates_a_secret_and_says_so(caplog):
     issued = store.create_session("default")
 
     assert store.verify_and_consume_token(issued.token).session_id == issued.session_id
-    assert caplog.messages == ["token_secret_generated dev_mode=True"]
+    assert caplog.messages == ["token_secret_generated dev_mode=True note=single_process_only"]
     assert store._secret.decode("utf-8") not in caplog.text
 
 

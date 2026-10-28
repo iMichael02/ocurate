@@ -80,7 +80,7 @@ We log `session_created` with the session id and Passage id, and `session_create
 ## Known limits
 
 - **Memory only, single process.** Pending and used tokens live in this process's memory. Run one uvicorn worker. With several workers, a token made by one worker is `unknown_session` on another.
-- **Lost on restart.** Pending Sessions are gone after a restart, so their tokens give `unknown_session`. The web server just creates a new Session.
-- **Dev mode secret** changes on every start, so all old tokens become `invalid_signature`.
-- Expired entries are removed on every create and verify, so memory stays at about (Sessions per minute) entries. There is no hard cap on pending Sessions yet; the API key is the only gate.
+- **Lost on restart.** Pending and used tokens are gone after a restart, so their tokens give `unknown_session`, including a token that had already been used (it cannot be replayed, but it is not reported as `already_used`). The web server just creates a new Session.
+- **Dev mode secret** changes on every start, so all old tokens become `invalid_signature`. Do not use `--reload` or several workers with `OCURATE_DEV_MODE=1`; each reload or worker gets its own secret and its own token tables.
+- Expired entries are removed from the front of an expiry-ordered structure on every create and verify, so the cost per call stays small. Pending Sessions are capped at `OCURATE_MAX_CONCURRENT_SESSIONS`; past that `POST /sessions` answers 503 `too many pending sessions` until some are used or expire.
 - The lock is a `threading.Lock`. It is held only for a few dict operations, so calling it from T8's async WebSocket handler is fine.

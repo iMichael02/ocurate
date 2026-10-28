@@ -25,6 +25,12 @@ class Passage:
 
     def __init__(self, lines):
 
+        if not lines or any(not line for line in lines):
+            raise ValueError("Passage needs at least one line, and no line may be empty")
+
+        if any(ch not in ASCII_TO_BRAILLE for line in lines for ch in line):
+            raise ValueError("Passage lines may only contain lowercase letters a-z and spaces")
+
         if len({len(line) for line in lines}) > 1:
             raise ValueError("Passage lines must all have the same length")
 
@@ -32,7 +38,7 @@ class Passage:
         self.braille_lines = [text_to_braille(line) for line in lines]
 
         self.num_rows = len(lines)
-        self.num_columns = len(lines[0]) if lines else 0
+        self.num_columns = len(lines[0])
 
         self.char_count = sum(len(line.replace(" ", "")) for line in lines)
         self.word_count = sum(len(line.split()) for line in lines)
@@ -55,26 +61,10 @@ def build_default_passage():
 
 
 class UnknownPassageError(KeyError):
-    """No Passage is registered under the requested id."""
+    """No Passage is stored under the requested id. Ids are stable: the web
+    server stores them with each Session's result."""
 
     def __init__(self, passage_id):
 
         self.passage_id = passage_id
         super().__init__(passage_id)
-
-
-# The Grade 1 Passages this service serves, by id. Ids are stable: the web
-# server stores them with each Session's result.
-PASSAGES = {
-    "default": build_default_passage(),
-}
-
-
-def get_passage(passage_id):
-    """The Passage registered under `passage_id`. Raises UnknownPassageError,
-    which Session creation uses to reject an unknown id."""
-
-    try:
-        return PASSAGES[passage_id]
-    except KeyError:
-        raise UnknownPassageError(passage_id) from None

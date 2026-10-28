@@ -2,10 +2,13 @@ import base64
 import hashlib
 import hmac
 import json
+import heapq
 import logging
+import math
 import secrets
 import threading
 import time
+from collections import OrderedDict
 from typing import NamedTuple
 
 from log_setup import log_event
@@ -41,6 +44,10 @@ class UnknownSession(TokenError):
     code = "unknown_session"
 
 
+class TooManySessions(Exception):
+    """Too many Sessions are waiting for their token to be used."""
+
+
 class IssuedToken(NamedTuple):
 
     session_id: str
@@ -69,10 +76,11 @@ class TokenStore:
 
     Pending and used tokens are kept in this process's memory only. So this
     works with a single worker process, and pending Sessions are lost on
-    restart (see docs/t9-sessions.md).
+    restart (see docs/t9-sessions.md). `max_pending` caps how many Sessions
+    can wait for their token at once.
     """
 
-    def __init__(self, secret, ttl_seconds, clock=time.time):
+    def __init__(self, secret, ttl_seconds, clock=time.time, max_pending=None):
 
         if ttl_seconds <= 0:
             raise ValueError("token lifetime must be positive")
@@ -80,13 +88,18 @@ class TokenStore:
         self._secret = secret.encode("utf-8") if secret else None
         self.ttl_seconds = ttl_seconds
         self._clock = clock
+        self.max_pending = max_pending
         self._lock = threading.Lock()
 
-        # token id -> (session id, passage id, expiry)
-        self._pending = {}
-        # token id -> expiry. Dropped once expired, since the expiry check
-        # then refuses a replay anyway.
+        # token id -> (session id, passage id, expiry). Every token has the same
+        # lifetime, so insertion order is expiry order and expired entries are
+        # dropped from the front.
+        self._pending = OrderedDict()
+        # token id -> expiry, plus a heap of (expiry, token id) to drop them in
+        # order. Dropped once expired, since the expiry check then refuses a
+        # replay anyway.
         self._used = {}
+        self._used_expiry = []
 
     @property
     def configured(self):
@@ -104,10 +117,17 @@ class TokenStore:
         with self._lock:
             now = self._clock()
             self._remove_expired(now)
-            expires_at = int(now) + self.ttl_seconds
+
+            if self.max_pending is not None and len(self._pending) >= self.max_pending:
+                raise TooManySessions()
+
+            # Rounded up so the token lives at least `ttl_seconds`.
+            expires_at = math.ceil(now + self.ttl_seconds)
             self._pending[token_id] = (session_id, passage_id, expires_at)
 
-        payload = {"sid": session_id, "pid": passage_id, "exp": expires_at, "jti": token_id}
+        # Only the token id and expiry are signed; the Session and Passage
+        # come from the pending entry, which is the single source of truth.
+        payload = {"exp": expires_at, "jti": token_id}
 
         return IssuedToken(session_id, self._sign(payload), expires_at)
 
@@ -119,7 +139,7 @@ class TokenStore:
         connections racing with the same token cannot both get through.
         """
 
-        session_id, passage_id, expires_at, token_id = self._verify_signature(token)
+        expires_at, token_id = self._verify_signature(token)
 
         with self._lock:
             now = self._clock()
@@ -133,10 +153,12 @@ class TokenStore:
                 raise TokenAlreadyUsed()
 
             entry = self._pending.pop(token_id, None)
-            if entry != (session_id, passage_id, expires_at):
+            if entry is None:
                 raise UnknownSession()
 
+            session_id, passage_id, _ = entry
             self._used[token_id] = expires_at
+            heapq.heappush(self._used_expiry, (expires_at, token_id))
 
         return SessionGrant(session_id, passage_id)
 
@@ -179,16 +201,23 @@ class TokenStore:
                 raise InvalidSignature()
 
             claims = json.loads(_b64decode(payload_part))
-            return claims["sid"], claims["pid"], claims["exp"], claims["jti"]
+            expires_at, token_id = claims["exp"], claims["jti"]
+            if not isinstance(expires_at, int) or not isinstance(token_id, str):
+                raise InvalidSignature()
+            return expires_at, token_id
         except (ValueError, KeyError, TypeError, AttributeError):
             raise InvalidSignature() from None
 
     def _remove_expired(self, now):
 
-        for token_id in [t for t, entry in self._pending.items() if entry[2] <= now]:
+        while self._pending:
+            token_id, entry = next(iter(self._pending.items()))
+            if entry[2] > now:
+                break
             del self._pending[token_id]
 
-        for token_id in [t for t, expires_at in self._used.items() if expires_at <= now]:
+        while self._used_expiry and self._used_expiry[0][0] <= now:
+            _, token_id = heapq.heappop(self._used_expiry)
             del self._used[token_id]
 
 
@@ -198,8 +227,9 @@ def build_token_store(settings, clock=time.time):
 
     if secret is None and settings.dev_mode:
         secret = secrets.token_urlsafe(32)
-        log_event(logger, "token_secret_generated", logging.WARNING, dev_mode=True)
+        # The secret and the token tables live in this process only: no --reload, one worker.
+        log_event(logger, "token_secret_generated", logging.WARNING, dev_mode=True, note="single_process_only")
     elif secret is None:
         log_event(logger, "session_creation_disabled", logging.WARNING, reason="token_secret_unset")
 
-    return TokenStore(secret, settings.token_ttl_seconds, clock)
+    return TokenStore(secret, settings.token_ttl_seconds, clock, settings.max_concurrent_sessions)

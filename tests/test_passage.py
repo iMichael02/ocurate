@@ -67,3 +67,16 @@ def test_build_default_passage_has_uniform_lines():
 
     assert len(line_lengths) == 1
     assert passage.num_rows >= 2
+
+
+@pytest.mark.parametrize("lines", [[], [""], ["ab", ""]])
+def test_rejects_empty_passage_or_lines(lines):
+
+    with pytest.raises(ValueError):
+        Passage(lines)
+
+
+def test_rejects_characters_outside_grade_1():
+
+    with pytest.raises(ValueError):
+        Passage(["Ab", "cd"])

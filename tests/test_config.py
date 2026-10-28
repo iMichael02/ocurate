@@ -5,7 +5,7 @@ from config import load_settings
 
 def test_defaults_when_environment_is_empty(monkeypatch):
 
-    for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET",
+    for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET", "DATABASE_URL",
                  "TOKEN_TTL_SECONDS", "SESSION_INACTIVITY_SECONDS", "MAX_MESSAGE_BYTES",
                  "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "LOG_LEVEL"):
         monkeypatch.delenv("OCURATE_" + name, raising=False)
@@ -16,6 +16,7 @@ def test_defaults_when_environment_is_empty(monkeypatch):
     assert settings.token_secret is None
     assert settings.callback_url is None
     assert settings.callback_secret is None
+    assert settings.database_url is None
     assert settings.token_ttl_seconds == 60
     assert settings.session_inactivity_seconds == 30.0
     assert settings.max_message_bytes == 65536

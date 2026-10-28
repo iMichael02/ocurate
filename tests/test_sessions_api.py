@@ -2,13 +2,32 @@ import logging
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
+import sessions_api
 from app import create_app
 from config import Settings
+from passage import UnknownPassageError, build_default_passage
+from passage_store import StoredPassageError
 from tokens import TokenAlreadyUsed
 
 API_KEY = "test-api-key-value"
 SECRET = "test-token-secret-value"
+DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"
+
+
+@pytest.fixture(autouse=True)
+def stored_passages(monkeypatch):
+    """The Passage lookup is mocked: only the `default` Passage exists."""
+
+    def fake_get_passage(engine, passage_id):
+
+        if passage_id != "default":
+            raise UnknownPassageError(passage_id)
+
+        return build_default_passage()
+
+    monkeypatch.setattr(sessions_api, "get_passage", fake_get_passage)
 
 
 @pytest.fixture
@@ -16,7 +35,7 @@ def app():
 
     # Built in a fixture, not in the test body: configure_logging resets the
     # root handlers, which would drop caplog's handler mid-test.
-    return create_app(Settings(api_key=API_KEY, token_secret=SECRET))
+    return create_app(Settings(api_key=API_KEY, token_secret=SECRET, database_url=DATABASE_URL))
 
 
 @pytest.fixture
@@ -105,30 +124,78 @@ def test_bad_body_is_rejected(app, client, body):
     assert app.state.tokens.pending_count() == 0
 
 
-@pytest.mark.parametrize("settings", [
-    Settings(token_secret=SECRET),
-    Settings(api_key=API_KEY),
-    Settings(),
-])
-def test_refuses_to_work_while_not_configured(settings):
+def test_missing_token_secret_is_only_revealed_to_a_caller_with_the_key():
+
+    client = TestClient(create_app(Settings(api_key=API_KEY, database_url=DATABASE_URL)))
+
+    assert post_session(client, {"X-API-Key": API_KEY}).status_code == 503
+    assert post_session(client, {"X-API-Key": "wrong"}).status_code == 401
+    assert post_session(client).status_code == 401
+
+
+@pytest.mark.parametrize("settings", [Settings(token_secret=SECRET, database_url=DATABASE_URL), Settings()])
+def test_unset_api_key_looks_like_any_other_refusal(settings):
 
     client = TestClient(create_app(settings))
+
+    assert post_session(client, {"X-API-Key": API_KEY}).status_code == 401
+    assert post_session(client).status_code == 401
+
+
+def test_needs_a_configured_passage_database():
+
+    client = TestClient(create_app(Settings(api_key=API_KEY, token_secret=SECRET)))
+
+    assert post_session(client, {"X-API-Key": API_KEY}).status_code == 503
+
+
+def test_unreachable_database_answers_503_and_creates_nothing(app, client, monkeypatch):
+
+    def fail(engine, passage_id):
+        raise OperationalError("SELECT", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(sessions_api, "get_passage", fail)
 
     response = post_session(client, {"X-API-Key": API_KEY})
 
     assert response.status_code == 503
+    assert response.json() == {"detail": "passage database unavailable"}
+    assert app.state.tokens.pending_count() == 0
+
+
+def test_invalid_stored_passage_answers_500(client, monkeypatch):
+
+    def invalid(engine, passage_id):
+        raise StoredPassageError(passage_id, "lines differ in length")
+
+    monkeypatch.setattr(sessions_api, "get_passage", invalid)
+
+    assert post_session(client, {"X-API-Key": API_KEY}).status_code == 500
+
+
+def test_too_many_pending_sessions_answers_503():
+
+    client = TestClient(create_app(Settings(api_key=API_KEY, token_secret=SECRET,
+                                            database_url=DATABASE_URL, max_concurrent_sessions=1)))
+
+    assert post_session(client, {"X-API-Key": API_KEY}).status_code == 201
+
+    response = post_session(client, {"X-API-Key": API_KEY})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "too many pending sessions"}
 
 
 def test_dev_mode_works_without_a_token_secret():
 
-    client = TestClient(create_app(Settings(api_key=API_KEY, dev_mode=True)))
+    client = TestClient(create_app(Settings(api_key=API_KEY, database_url=DATABASE_URL, dev_mode=True)))
 
     assert post_session(client, {"X-API-Key": API_KEY}).status_code == 201
 
 
 def test_lifetime_comes_from_settings():
 
-    client = TestClient(create_app(Settings(api_key=API_KEY, token_secret=SECRET, token_ttl_seconds=15)))
+    client = TestClient(create_app(Settings(api_key=API_KEY, token_secret=SECRET, database_url=DATABASE_URL, token_ttl_seconds=15)))
 
     assert post_session(client, {"X-API-Key": API_KEY}).json()["expires_in"] == 15
 
