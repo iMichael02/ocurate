@@ -53,3 +53,27 @@ def test_invalid_number_names_the_variable(monkeypatch):
 
     with pytest.raises(ValueError, match="OCURATE_MAX_FRAMES_PER_SECOND"):
         load_settings()
+
+
+def test_dev_mode_is_off_by_default(monkeypatch):
+
+    monkeypatch.delenv("OCURATE_DEV_MODE", raising=False)
+
+    assert load_settings().dev_mode is False
+
+
+@pytest.mark.parametrize("raw, expected", [("1", True), ("true", True), ("YES", True),
+                                           ("0", False), ("false", False), ("no", False)])
+def test_dev_mode_reads_flag(monkeypatch, raw, expected):
+
+    monkeypatch.setenv("OCURATE_DEV_MODE", raw)
+
+    assert load_settings().dev_mode is expected
+
+
+def test_invalid_flag_names_the_variable(monkeypatch):
+
+    monkeypatch.setenv("OCURATE_DEV_MODE", "maybe")
+
+    with pytest.raises(ValueError, match="OCURATE_DEV_MODE"):
+        load_settings()
