@@ -25,6 +25,12 @@ class Passage:
 
     def __init__(self, lines):
 
+        if not lines or any(not line for line in lines):
+            raise ValueError("Passage needs at least one line, and no line may be empty")
+
+        if any(ch not in ASCII_TO_BRAILLE for line in lines for ch in line):
+            raise ValueError("Passage lines may only contain lowercase letters a-z and spaces")
+
         if len({len(line) for line in lines}) > 1:
             raise ValueError("Passage lines must all have the same length")
 
@@ -32,7 +38,7 @@ class Passage:
         self.braille_lines = [text_to_braille(line) for line in lines]
 
         self.num_rows = len(lines)
-        self.num_columns = len(lines[0]) if lines else 0
+        self.num_columns = len(lines[0])
 
         self.char_count = sum(len(line.replace(" ", "")) for line in lines)
         self.word_count = sum(len(line.split()) for line in lines)
@@ -62,24 +68,3 @@ class UnknownPassageError(KeyError):
 
         self.passage_id = passage_id
         super().__init__(passage_id)
-
-
-def passage_summary(passage_id, passage):
-    """What the browser and web server need to render a Passage and know its
-    ground truth. The counts are the Passage's own, the same ones Reading
-    Speed divides by; nothing here derives them from the grid size."""
-
-    first_row, first_col = passage.first_cell
-    last_row, last_col = passage.last_cell
-
-    return {
-        "id": passage_id,
-        "lines": list(passage.lines),
-        "braille_lines": list(passage.braille_lines),
-        "rows": passage.num_rows,
-        "columns": passage.num_columns,
-        "char_count": passage.char_count,
-        "word_count": passage.word_count,
-        "first_cell": {"row": first_row, "col": first_col},
-        "last_cell": {"row": last_row, "col": last_col},
-    }

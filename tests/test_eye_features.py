@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import protocol
+from schemas import protocol
 from eye_features import (
     normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE,
     IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP,

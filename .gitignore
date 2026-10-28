@@ -3,4 +3,14 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .claude/
+
 .env
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.webp

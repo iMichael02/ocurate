@@ -21,16 +21,16 @@ docker compose up -d --wait
 
 If port 3306 is already taken, set `MYSQL_PORT` to another host port and use that port in the URL below.
 
-Point the service at it, then create the `passages` table and insert the default Passage (safe to re-run):
+Point the service at it (the password is percent-encoded so characters like `@` or `/` are safe), then create the `passages` table and bring the default Passage up to date with the code (safe to re-run, also when several processes run it at once):
 
 ```
-export OCURATE_DATABASE_URL="mysql+pymysql://$MYSQL_USER:$MYSQL_PASSWORD@127.0.0.1:${MYSQL_PORT:-3306}/ocurate"
+export OCURATE_DATABASE_URL="mysql+pymysql://$MYSQL_USER:$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["MYSQL_PASSWORD"], safe=""))')@127.0.0.1:${MYSQL_PORT:-3306}/ocurate?charset=utf8mb4"
 venv/bin/python passage_store.py
 ```
 
 Stop the container with `docker compose down`; the data stays in the volume. `docker compose down -v` also deletes it.
 
-The tests use a temporary SQLite database and need no MySQL server.
+The tests mock the database connection and need no MySQL server. The `/passages` endpoints answer 503 when the database is unreachable or the table is missing (run the command above), and an invalid stored row is left out of the listing and answers 500 on its own id.
 
 ## Run
 

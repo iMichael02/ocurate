@@ -1,6 +1,6 @@
 # WebSocket protocol (draft, T2)
 
-Status: schemas implemented in [`protocol.py`](../protocol.py) and tested in `tests/test_protocol.py`; the WebSocket endpoint and Session manager are not written yet. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
+Status: schemas implemented in [`schemas/protocol.py`](../schemas/protocol.py) and tested in `tests/test_protocol.py`; the WebSocket endpoint and Session manager are not written yet. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
 
 Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed result callback (web server ↔ service) are separate HTTP contracts and are out of scope.
 

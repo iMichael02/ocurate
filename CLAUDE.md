@@ -16,7 +16,7 @@ Service skeleton:
 
 - `app.py` — FastAPI app factory (`create_app`) with `GET /health`
 - `config.py` — `Settings`, read from `OCURATE_*` environment variables
-- `protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
+- `schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
 - `log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
 Pure logic, reused by the service:
@@ -27,22 +27,25 @@ Pure logic, reused by the service:
 - `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
 - `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
 - `passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
-- `passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and seeds the default Passage; `get_passage` / `list_passages` read it back through `Passage`
+- `passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and keeps the default Passage in sync with the code; `get_passage` / `list_passages` read it back through `Passage` and raise `StoredPassageError` for a row that is not a valid Passage
+- `schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
 - `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
+
+- `calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
 Needs changing:
 
-- `calibration.py` — still has the 9-point grid and the uniform-grid `gaze_to_braille_cell`. Target: a 16-point (4×4) grid, and Cell mapping from the browser-reported Cell Layout rectangles.
+- `calibration.py` — `gaze_to_braille_cell` still uses the uniform grid. Target: Cell mapping from the browser-reported Cell Layout rectangles.
 
 Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, the token check and the signed result callback.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested, as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
 - Keep `CONTEXT.md` a pure glossary (no implementation/pipeline details) and `architecture-design.md` as the pipeline/technical spec — don't let pipeline description creep back into `CONTEXT.md`.
-- Passages are read-only reference data in MySQL; nothing else goes in the database.
-- This service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
+- Passages are reference data in MySQL; nothing else goes in the database. The service only reads them: the one write path is `passage_store.init_db` (run from the command line, not by the app), which creates the table and keeps the code-owned `default` Passage in sync with `build_default_passage`.
+- Apart from that Passage table, this service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
 - All timing uses the browser's frame timestamps, never arrival time.
