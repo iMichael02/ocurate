@@ -1,17 +1,14 @@
 # Result callback (T10, proposal)
 
-Status: **proposed, not implemented.** This is the contract between this service and the web server for reporting how a Session ended. It is open for review; the open questions at the end need an answer before the code is written. Context: [ADR 0003](./adr/0003-split-web-interface-and-gaze-service.md) (the browser never relays results) and [architecture-design.md](../architecture-design.md) section 0, steps 5 and 6.
+Status: **proposed, not implemented.** This is the contract between this service and the web server for reporting a completed Session. Decided in review: a restart may drop pending results, retries last 15 minutes, and abandoned Sessions are not reported. One question is still open (header names, below). Context: [ADR 0003](./adr/0003-split-web-interface-and-gaze-service.md) (the browser never relays results) and [architecture-design.md](../architecture-design.md) section 0, steps 5 and 6.
 
 Scope: service → web server only. The browser WebSocket is in [websocket-protocol.md](./websocket-protocol.md) and `POST /sessions` in [t9-sessions.md](./t9-sessions.md).
 
 ## When it is sent
 
-Once per Session, when the Session ends:
+Once per Session, only when it ends `completed`: the Learner reached the last Cell and the body carries the result.
 
-- `completed`: the Learner reached the last Cell. The body carries the result.
-- `abandoned`: any other end (`quit`, `viewport_changed`, `frame_timeout`, `socket_closed`, `protocol_error`, `calibration_failed`). The body carries only the reason; abandoned Sessions are not scored.
-
-A connection that is refused during the handshake (bad version, bad token) never became a Session and sends nothing.
+Abandoned Sessions (`quit`, `viewport_changed`, `frame_timeout`, `socket_closed`, `protocol_error`, `calibration_failed`) send nothing, and neither does a connection refused during the handshake. The web server learns that a Session was abandoned only by never receiving a result for its `session_id`.
 
 The service sends it from `app.state.on_session_finished(outcome)`, with the `Outcome` the Session manager already builds. It does not wait for the callback before closing the WebSocket, so a slow web server never holds a Learner's socket open.
 
@@ -24,14 +21,13 @@ X-Ocurate-Timestamp: 1760000123
 X-Ocurate-Signature: sha256=3b1f...
 ```
 
-Body for a completed Session:
+Body:
 
 ```json
 {
   "session_id": "Xq3n0d5bWm1Kz7yQ2r8T4A",
   "passage_id": "default",
   "status": "completed",
-  "reason": null,
   "result": {
     "elapsed_seconds": 10.0,
     "cpm": 108.0,
@@ -43,8 +39,6 @@ Body for a completed Session:
   }
 }
 ```
-
-Body for an abandoned Session: the same fields with `"status": "abandoned"`, `"reason": "<abandon reason>"` and `"result": null`.
 
 - `session_id` is the id returned by `POST /sessions`. It is the only identity the service knows: it never sees the Learner, so the web server maps the id back to the Learner it created the Session for.
 - `result` is exactly what the `completed` WebSocket message carries (`schemas/protocol.Result`), so what the Learner sees and what the web server stores are the same numbers.
@@ -69,7 +63,7 @@ The web server must:
 | any other `4xx` | Give up and log it (`callback_rejected` with the status). Retrying a rejected request would not change the answer. |
 
 - **Idempotency:** retries send the same body for the same `session_id`; only the timestamp and signature change. The web server stores the first result it accepts for a `session_id` and answers `200` to repeats without changing it.
-- **Backoff:** 1 s, 2 s, 4 s, ... doubling up to 60 s, with up to 20% random jitter, for at most 1 hour from the first attempt. After that the service logs `callback_abandoned` and drops it.
+- **Backoff:** 1 s, 2 s, 4 s, ... doubling up to 60 s, with up to 20% random jitter, for at most 15 minutes from the first attempt. After that the service logs `callback_dropped` and drops it.
 - **Per-attempt timeout:** 5 s.
 - **Redirects** are not followed.
 - **Transport:** `OCURATE_CALLBACK_URL` must be `https://`. `http://` is accepted only for `localhost` / `127.0.0.1`, for local development.
@@ -85,20 +79,22 @@ If either is unset the callback is switched off: the service logs a warning at s
 
 ## Logging
 
-`callback_sent` / `callback_retry` / `callback_rejected` / `callback_abandoned`, with the session id, attempt number and HTTP status. The secret, signature and body are never logged.
+`callback_sent` / `callback_retry` / `callback_rejected` / `callback_dropped`, with the session id, attempt number and HTTP status. The secret, signature and body are never logged.
 
 ## Known limits (follow from "the service persists nothing")
 
-- **The retry queue lives in memory.** If the service restarts while a callback is waiting to be retried, that result is lost. The Learner still saw it on screen, but the web server never stores it.
-- The queue is capped (1000 pending callbacks); past that the oldest is dropped with a `callback_abandoned` log.
+- **The retry queue lives in memory.** If the service restarts while a callback is waiting to be retried, that result is dropped (accepted in review). The Learner still saw it on screen, but the web server never stores it, and it sees the same silence as for an abandoned Session.
+- The queue is capped (1000 pending callbacks); past that the oldest is dropped with a `callback_dropped` log.
 
-## Open questions for review
+## Decisions from review
 
-1. **Lost results on restart.** Is that acceptable, or must a result survive a restart? Surviving means an outbox on disk or in a database, which reverses "this service persists nothing". Recommendation: accept the limit for now; a web server that needs certainty can treat a Session with no result after N minutes as unknown.
-2. **Header names and signature format.** `X-Ocurate-Timestamp` and `X-Ocurate-Signature: sha256=<hex>`, modelled on common webhook schemes. Does the web server framework already expect something else?
-3. **Retry window.** 1 hour is a guess. Does the web server have a deadline after which it would rather not receive a result?
-4. **Abandoned Sessions.** Does the web server want them at all? The architecture says the callback reports `abandoned`; this proposal does so, with the reason.
-5. **One URL or one per event.** One URL receiving both statuses, as above.
+1. Pending results are dropped on restart. Accepted.
+2. Retry window: 15 minutes.
+3. Abandoned Sessions are not reported.
+
+## Open question
+
+**Header names and signature format.** Proposed: `X-Ocurate-Timestamp` and `X-Ocurate-Signature: sha256=<hex>`, a common webhook scheme that any framework can verify with a few lines. The web server is not in this repo or the frontend repo, so nothing here says which framework it uses. If it already has a convention (or a library that verifies a different scheme), say so and the names change before the code is written.
 
 ## Implementation plan (after review)
 
