@@ -125,7 +125,7 @@ No need for perfect pixel-level gaze estimation. Because the application control
 
 If the gaze model predicts (x,y)=(320,250) and that coordinate falls inside C3, the system assigns: Current gaze → C3. The system becomes (x,y) → Braille character rather than requiring extremely precise gaze coordinates. All lines are assumed to have the same number of characters, which keeps the Passage's grid uniform.
 
-The browser, which renders the Passage, is the only party that knows where each Cell sits in pixels, so it reports the Cell Layout (one normalized rectangle per Cell) once at Session start. This service maps each Fixation position to a Cell by finding the rectangle that contains it, replacing the uniform-grid arithmetic in `gaze_to_braille_cell`. Mapping from rectangles rather than a computed grid also leaves room for Grade 2 or non-uniform layouts later (ADR 0002).
+The browser, which renders the Passage, is the only party that knows where each Cell sits in pixels, so it reports the Cell Layout (one normalized rectangle per Cell) once at Session start. This service maps each Fixation position to a Cell by finding the rectangle that contains it, replacing the earlier uniform-grid arithmetic (`cell_layout.cell_at`). Mapping from rectangles rather than a computed grid also leaves room for Grade 2 or non-uniform layouts later (ADR 0002).
 
 ## 6. Reading speed (headline metric)
 

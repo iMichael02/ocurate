@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 
-from calibration import Calibration, CALIBRATION_POINTS, gaze_to_braille_cell
+from types import SimpleNamespace
+
+from calibration import Calibration, CALIBRATION_POINTS, target_index
 
 
 def test_calibration_points_are_a_4x4_grid_from_0_1_to_0_9_row_major():
@@ -13,70 +15,6 @@ def test_calibration_points_are_a_4x4_grid_from_0_1_to_0_9_row_major():
     for index, (x, y) in enumerate(CALIBRATION_POINTS):
         assert x == pytest.approx(axis[index % 4])
         assert y == pytest.approx(axis[index // 4])
-
-
-def test_maps_gaze_to_expected_cell():
-
-    row, column = gaze_to_braille_cell(
-        gaze_x=0.5,
-        gaze_y=0.5,
-        screen_width=500,
-        screen_height=300,
-        cell_width=100,
-        line_height=100,
-        num_rows=3,
-        num_columns=5,
-    )
-
-    assert (row, column) == (1, 2)
-
-
-def test_clamps_column_at_right_edge():
-
-    row, column = gaze_to_braille_cell(
-        gaze_x=1.0,
-        gaze_y=0.0,
-        screen_width=500,
-        screen_height=300,
-        cell_width=100,
-        line_height=100,
-        num_rows=3,
-        num_columns=5,
-    )
-
-    assert column == 4
-
-
-def test_clamps_row_at_bottom_edge():
-
-    row, column = gaze_to_braille_cell(
-        gaze_x=0.0,
-        gaze_y=1.0,
-        screen_width=500,
-        screen_height=300,
-        cell_width=100,
-        line_height=100,
-        num_rows=3,
-        num_columns=5,
-    )
-
-    assert row == 2
-
-
-def test_clamps_negative_gaze_to_first_cell():
-
-    row, column = gaze_to_braille_cell(
-        gaze_x=-0.5,
-        gaze_y=-0.5,
-        screen_width=500,
-        screen_height=300,
-        cell_width=100,
-        line_height=100,
-        num_rows=3,
-        num_columns=5,
-    )
-
-    assert (row, column) == (0, 0)
 
 
 def feed(calibration, indices, frames_per_point=3, noise=0.0):
@@ -207,3 +145,29 @@ def test_restart_discards_the_failed_attempts_samples():
     result = calibration.finish()
     assert result.outcome == "ready"
     assert all(p.samples == 2 for p in result.points)
+
+
+def test_target_index_finds_the_nearest_point():
+
+    for index, (x, y) in enumerate(CALIBRATION_POINTS):
+        assert target_index(SimpleNamespace(x=x, y=y)) == index
+        assert target_index(SimpleNamespace(x=x + 0.01, y=y - 0.01)) == index
+
+
+def test_target_index_ignores_a_point_off_the_grid():
+
+    assert target_index(SimpleNamespace(x=0.5, y=0.5)) is None
+
+
+def test_progress_marks_earlier_targets_ok_or_skipped_and_the_rest_pending():
+
+    calibration = Calibration()
+    calibration.add_frame(CALIBRATION_POINTS[0], np.array([1.0]))
+    calibration.add_frame(CALIBRATION_POINTS[2], np.array([1.0]))
+
+    states = [(s.state, s.samples) for s in calibration.progress(2)]
+
+    assert states[0] == ("ok", 1)
+    assert states[1] == ("skipped", 0)
+    assert states[2] == ("collecting", 1)
+    assert all(state == ("pending", 0) for state in states[3:])
