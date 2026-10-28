@@ -4,7 +4,7 @@ Webcam-based Braille reading tracker. This repo is the **gaze-analysis backend**
 
 ## Stack
 
-Python 3.12, FastAPI (+ uvicorn), scikit-learn, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. See README.md for running, testing and the `OCURATE_*` configuration.
+Python 3.12, FastAPI (+ uvicorn), scikit-learn, numpy, SQLAlchemy Core + PyMySQL (Passages only). Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. See README.md for running, testing and the `OCURATE_*` configuration.
 
 ## Status of the split
 
@@ -27,6 +27,7 @@ Pure logic, reused by the service:
 - `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
 - `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
 - `passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
+- `passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and keeps the default Passage in sync with the code; `get_passage` / `list_passages` read it back through `Passage` and raise `StoredPassageError` for a row that is not a valid Passage
 - `schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
 - `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
@@ -40,10 +41,11 @@ Not written yet: the Session manager (in-memory Session state), the WebSocket en
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested, as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
 - Keep `CONTEXT.md` a pure glossary (no implementation/pipeline details) and `architecture-design.md` as the pipeline/technical spec — don't let pipeline description creep back into `CONTEXT.md`.
-- This service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
+- Passages are reference data in MySQL; nothing else goes in the database. The service only reads them: the one write path is `passage_store.init_db` (run from the command line, not by the app), which creates the table and keeps the code-owned `default` Passage in sync with `build_default_passage`.
+- Apart from that Passage table, this service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
 - All timing uses the browser's frame timestamps, never arrival time.
