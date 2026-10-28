@@ -38,7 +38,11 @@ The tests mock the database connection and need no MySQL server. The `/passages`
 venv/bin/uvicorn app:app --reload
 ```
 
+With `OCURATE_DEV_MODE=1` run it without `--reload`: the generated token secret and the pending tokens live in one process.
+
 `GET /health` answers `{"status": "ok"}`.
+
+`POST /sessions` lets the web server create a Session. It needs `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally). See [docs/t9-sessions.md](./docs/t9-sessions.md).
 
 ## Test
 
@@ -61,11 +65,12 @@ All settings are environment variables. Unset or empty values use the default.
 | `OCURATE_SESSION_INACTIVITY_SECONDS` | `30` | Seconds without frames before a Session is abandoned |
 | `OCURATE_MAX_MESSAGE_BYTES` | `65536` | Largest accepted WebSocket message |
 | `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session |
-| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Live Sessions allowed at once |
+| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Sessions allowed to wait for their token at once; `POST /sessions` answers 503 past it |
 | `OCURATE_MAX_CALIBRATION_ATTEMPTS` | `3` | Calibration attempts per Session before it is abandoned |
 | `OCURATE_LOG_LEVEL` | `INFO` | Python logging level |
+| `OCURATE_DEV_MODE` | `0` | Local dev only. With no token secret set, a random one is made at startup (tokens then die with the process) |
 
-Unset secrets let the app start for local development. The endpoints that need them must refuse to work while they are unset.
+Unset secrets let the app start for local development. The endpoints that need them must refuse to work while they are unset. Never set `OCURATE_DEV_MODE` in production.
 
 ## Logging
 

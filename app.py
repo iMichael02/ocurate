@@ -10,6 +10,8 @@ from log_setup import configure_logging, log_event
 from passage import UnknownPassageError
 from passage_store import StoredPassageError, get_passage, list_passages
 from schemas.passage import PassageSummary, passage_summary
+from sessions_api import router as sessions_router
+from tokens import build_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,8 @@ def create_app(settings=None):
     app = FastAPI(title="Ocurate gaze-analysis service", lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
+    # T8 checks WebSocket tokens with app.state.tokens.verify_and_consume_token.
+    app.state.tokens = build_token_store(settings)
 
     def require_engine():
 
@@ -74,6 +78,8 @@ def create_app(settings=None):
             raise HTTPException(status_code=500, detail="stored passage is invalid")
         except SQLAlchemyError as error:
             raise database_unavailable(error) from error
+
+    app.include_router(sessions_router)
 
     return app
 

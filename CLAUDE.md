@@ -17,6 +17,8 @@ Service skeleton:
 - `app.py` — FastAPI app factory (`create_app`) with `GET /health`
 - `config.py` — `Settings`, read from `OCURATE_*` environment variables
 - `schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
+- `sessions_api.py` — `POST /sessions` (API key, then Passage lookup, then a signed single-use token); `schemas/sessions.py` holds its request and response; see docs/t9-sessions.md
+- `tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
 - `log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
 Pure logic, reused by the service:
@@ -37,11 +39,11 @@ Needs changing:
 
 - `calibration.py` — `gaze_to_braille_cell` still uses the uniform grid. Target: Cell mapping from the browser-reported Cell Layout rectangles.
 
-Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, the token check and the signed result callback.
+Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint (it will call `TokenStore.verify_and_consume_token`) and the signed result callback.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `POST /sessions` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 

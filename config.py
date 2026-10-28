@@ -19,6 +19,8 @@ class Settings:
     callback_secret: Optional[str] = None
     database_url: Optional[str] = None
 
+    # Short on purpose: the token is only needed between POST /sessions
+    # and the browser opening the WebSocket.
     token_ttl_seconds: int = 60
     session_inactivity_seconds: float = 30.0
     max_message_bytes: int = 65536
@@ -27,6 +29,21 @@ class Settings:
     max_calibration_attempts: int = 3
 
     log_level: str = "INFO"
+
+    # Local dev only: with no token secret set, a random one is made at startup.
+    dev_mode: bool = False
+
+
+def boolean(raw):
+
+    value = raw.strip().lower()
+
+    if value in ("1", "true", "yes"):
+        return True
+    if value in ("0", "false", "no"):
+        return False
+
+    raise ValueError(raw)
 
 
 def _read(name, cast, default):
@@ -59,4 +76,5 @@ def load_settings():
         max_concurrent_sessions=_read("MAX_CONCURRENT_SESSIONS", int, defaults.max_concurrent_sessions),
         max_calibration_attempts=_read("MAX_CALIBRATION_ATTEMPTS", int, defaults.max_calibration_attempts),
         log_level=_read("LOG_LEVEL", str, defaults.log_level).upper(),
+        dev_mode=_read("DEV_MODE", boolean, defaults.dev_mode),
     )
