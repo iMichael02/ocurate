@@ -1,6 +1,6 @@
 # Ocurate gaze-analysis service
 
-Backend for the Ocurate web interface. Read [CONTEXT.md](./CONTEXT.md) for the domain terms and [architecture-design.md](./architecture-design.md) for the pipeline and the frontend ↔ backend contract.
+Backend for the Ocurate web interface. Read [CONTEXT.md](./CONTEXT.md) for the domain terms and [docs/architecture-design.md](./docs/architecture-design.md) for the pipeline and the frontend ↔ backend contract.
 
 ## Setup
 
@@ -25,7 +25,7 @@ Point the service at it (the password is percent-encoded so characters like `@` 
 
 ```
 export OCURATE_DATABASE_URL="mysql+pymysql://$MYSQL_USER:$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["MYSQL_PASSWORD"], safe=""))')@127.0.0.1:${MYSQL_PORT:-3306}/ocurate?charset=utf8mb4"
-venv/bin/python passage_store.py
+venv/bin/python -m ocurate.passages.passage_store
 ```
 
 Stop the container with `docker compose down`; the data stays in the volume. `docker compose down -v` also deletes it.
@@ -35,7 +35,7 @@ The tests mock the database connection and need no MySQL server. The `/passages`
 ## Run
 
 ```
-venv/bin/uvicorn app:app --reload
+venv/bin/uvicorn ocurate.app:app --reload
 ```
 
 With `OCURATE_DEV_MODE=1` run it without `--reload`: the generated token secret and the pending tokens live in one process.

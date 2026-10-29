@@ -1,6 +1,6 @@
 import logging
 
-from log_setup import format_event, log_event
+from ocurate.log_setup import format_event, log_event
 
 
 def test_format_event_includes_plain_fields():
