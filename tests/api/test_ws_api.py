@@ -114,6 +114,29 @@ def test_an_expired_token_is_refused_with_4401():
         assert expect_close(websocket) == protocol.CLOSE_INVALID_TOKEN
 
 
+def test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on():
+
+    app = make_app()
+    token = new_token(app)
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws") as first:
+        first.send_text(hello(token=token))
+        assert receive(first).type == "hello_ack"
+
+        # Opened while the first one is still live, like a second tab.
+        with client.websocket_connect("/ws") as second:
+            second.send_text(hello(token=token))
+
+            assert receive(second).code == "invalid_token"
+            assert expect_close(second) == protocol.CLOSE_INVALID_TOKEN
+
+        first.send_text(quadrant_layout())
+        first.send_text(frame(0.0, (0.1, 0.1)))
+
+        assert receive(first).type == "calibration_status"
+
+
 def test_an_unsupported_version_is_refused_with_4409():
 
     app = make_app()
