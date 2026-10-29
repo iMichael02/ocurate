@@ -6,11 +6,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 from starlette.websockets import WebSocketDisconnect
 
-import ocurate.api.ws_api as ws_api
-from ocurate.app import create_app
-from ocurate.config import Settings
-from ocurate.passages.passage import Passage, UnknownPassageError
-from ocurate.schemas import protocol
+import app.api.ws_api as ws_api
+from app.app import create_app
+from app.config import Settings
+from app.passages.passage import Passage, UnknownPassageError
+from app.schemas import protocol
 from tests.sessions.test_session_manager import CELL_CENTRES, frame, hello, quadrant_layout
 
 DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"

@@ -4,13 +4,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-import ocurate.app as app_module
-from ocurate.app import create_app
-from ocurate.config import Settings
-from ocurate.passages.passage import UnknownPassageError, build_default_passage
-from ocurate.passages.passage_store import StoredPassageError
-from ocurate.analysis.reading_session import ReadingSession
-from ocurate.schemas.passage import passage_summary
+import app.app as app_module
+from app.app import create_app
+from app.config import Settings
+from app.passages.passage import UnknownPassageError, build_default_passage
+from app.passages.passage_store import StoredPassageError
+from app.analysis.reading_session import ReadingSession
+from app.schemas.passage import passage_summary
 
 DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"
 

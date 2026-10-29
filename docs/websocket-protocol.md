@@ -1,6 +1,6 @@
 # WebSocket protocol (draft, T2)
 
-Status: schemas in [`ocurate/schemas/protocol.py`](../ocurate/schemas/protocol.py) (tested in `tests/test_protocol.py`), the Session state machine in [`session_manager.py`](../ocurate/sessions/session_manager.py) and the endpoint in [`ws_api.py`](../ocurate/api/ws_api.py) are implemented. Not done yet: the signed result callback, per-Session frame-rate limiting and a cap on live Sessions. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](./architecture-design.md) section 0.
+Status: schemas in [`app/schemas/protocol.py`](../app/schemas/protocol.py) (tested in `tests/test_protocol.py`), the Session state machine in [`session_manager.py`](../app/sessions/session_manager.py) and the endpoint in [`ws_api.py`](../app/api/ws_api.py) are implemented. Not done yet: the signed result callback, per-Session frame-rate limiting and a cap on live Sessions. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](./architecture-design.md) section 0.
 
 Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed result callback (web server ↔ service) are separate HTTP contracts and are out of scope.
 

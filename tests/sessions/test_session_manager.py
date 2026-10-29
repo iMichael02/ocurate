@@ -3,13 +3,13 @@ import json
 import numpy as np
 import pytest
 
-from ocurate.analysis.calibration import CALIBRATION_POINTS, Calibration, CalibrationResult, TargetStatus
-from ocurate.config import Settings
-from ocurate.passages.passage import Passage
-from ocurate.schemas import protocol
-from ocurate.sessions.session_manager import (CALIBRATION_SAMPLES_PER_POINT, Authenticated, PassageUnavailable, Phase,
+from app.analysis.calibration import CALIBRATION_POINTS, Calibration, CalibrationResult, TargetStatus
+from app.config import Settings
+from app.passages.passage import Passage
+from app.schemas import protocol
+from app.sessions.session_manager import (CALIBRATION_SAMPLES_PER_POINT, Authenticated, PassageUnavailable, Phase,
                              Session)
-from ocurate.sessions.tokens import InvalidSignature, TokenAlreadyUsed
+from app.sessions.tokens import InvalidSignature, TokenAlreadyUsed
 
 PASSAGE = Passage(["ab", "cd"])
 LAST_POINT = len(CALIBRATION_POINTS) - 1

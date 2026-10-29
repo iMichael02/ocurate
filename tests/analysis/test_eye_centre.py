@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from ocurate.analysis.eye_centre import CROP_WIDTH, CROP_HEIGHT, locate_eye_centre
+from app.analysis.eye_centre import CROP_WIDTH, CROP_HEIGHT, locate_eye_centre
 
 
 def _eye(cx, cy, radius=4.0, dark=30.0, skin=200.0, noise=0.0, seed=0):

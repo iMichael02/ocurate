@@ -12,41 +12,41 @@ The old standalone OpenCV app has been removed. The service skeleton exists; the
 
 ## Layout
 
-The code is the `ocurate` package. `tests/` mirrors it.
+The code is the `app` package. `tests/` mirrors it.
 
-- `ocurate/` — app factory, settings, logging
-- `ocurate/api/` — HTTP and WebSocket routes
-- `ocurate/sessions/` — Session state machine and tokens
-- `ocurate/analysis/` — pure gaze and reading-analysis logic (no I/O)
-- `ocurate/passages/` — Passage model and its MySQL store
-- `ocurate/schemas/` — Pydantic request, response and protocol schemas
+- `app/` — app factory, settings, logging
+- `app/api/` — HTTP and WebSocket routes
+- `app/sessions/` — Session state machine and tokens
+- `app/analysis/` — pure gaze and reading-analysis logic (no I/O)
+- `app/passages/` — Passage model and its MySQL store
+- `app/schemas/` — Pydantic request, response and protocol schemas
 - `docs/` — architecture, protocol and ADRs
 
 Modules:
 
-- `ocurate/app.py` — FastAPI app factory (`create_app`) with `GET /health`, the Passage endpoints and the routers below
-- `ocurate/config.py` — `Settings`, read from `OCURATE_*` environment variables
-- `ocurate/schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
-- `ocurate/api/sessions_api.py` — `POST /sessions` (API key, then Passage lookup, then a signed single-use token); `ocurate/schemas/sessions.py` holds its request and response; see docs/t9-sessions.md
-- `ocurate/api/ws_api.py` — the `/ws` WebSocket route: checks the token, loads the Passage, feeds each message to a `Session` and sends its replies; calls `app.state.on_session_finished(outcome)` when a Session ends
-- `ocurate/sessions/session_manager.py` — `Session`: the per-socket state machine (hello → layout → calibration with retries → reading → completed/abandoned). No I/O, so tests drive it with plain messages
-- `ocurate/analysis/cell_layout.py` — `cell_at`: maps a gaze point to a Cell from the browser-reported Layout rectangles
-- `ocurate/sessions/tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
-- `ocurate/log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
+- `app/app.py` — FastAPI app factory (`create_app`) with `GET /health`, the Passage endpoints and the routers below
+- `app/config.py` — `Settings`, read from `OCURATE_*` environment variables
+- `app/schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
+- `app/api/sessions_api.py` — `POST /sessions` (API key, then Passage lookup, then a signed single-use token); `app/schemas/sessions.py` holds its request and response; see docs/t9-sessions.md
+- `app/api/ws_api.py` — the `/ws` WebSocket route: checks the token, loads the Passage, feeds each message to a `Session` and sends its replies; calls `app.state.on_session_finished(outcome)` when a Session ends
+- `app/sessions/session_manager.py` — `Session`: the per-socket state machine (hello → layout → calibration with retries → reading → completed/abandoned). No I/O, so tests drive it with plain messages
+- `app/analysis/cell_layout.py` — `cell_at`: maps a gaze point to a Cell from the browser-reported Layout rectangles
+- `app/sessions/tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
+- `app/log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
 Pure logic, reused by the service:
 
-- `ocurate/analysis/eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/analysis/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
-- `ocurate/analysis/eye_centre.py` — Python reference of the Timm & Barth eye-centre method the browser runs (ADR 0004, docs/eye-centre.md); the service itself only receives its output in `frame.eye_centres` (protocol v2), which `extract_features(frame, use_eye_centres=True)` turns into 4 extra features
-- `ocurate/analysis/gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
-- `ocurate/analysis/gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
-- `ocurate/analysis/fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
-- `ocurate/passages/passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
-- `ocurate/passages/passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and keeps the default Passage in sync with the code; `get_passage` / `list_passages` read it back through `Passage` and raise `StoredPassageError` for a row that is not a valid Passage
-- `ocurate/schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
-- `ocurate/analysis/reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
+- `app/analysis/eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/analysis/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
+- `app/analysis/eye_centre.py` — Python reference of the Timm & Barth eye-centre method the browser runs (ADR 0004, docs/eye-centre.md); the service itself only receives its output in `frame.eye_centres` (protocol v2), which `extract_features(frame, use_eye_centres=True)` turns into 4 extra features
+- `app/analysis/gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
+- `app/analysis/gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
+- `app/analysis/fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
+- `app/passages/passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
+- `app/passages/passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and keeps the default Passage in sync with the code; `get_passage` / `list_passages` read it back through `Passage` and raise `StoredPassageError` for a row that is not a valid Passage
+- `app/schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
+- `app/analysis/reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
-- `ocurate/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
+- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
 Not written yet: the signed result callback (hook: `app.state.on_session_finished`), frame-rate limiting, and a cap on live Sessions.
 

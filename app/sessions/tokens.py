@@ -11,7 +11,7 @@ import time
 from collections import OrderedDict
 from typing import NamedTuple
 
-from ocurate.log_setup import log_event
+from app.log_setup import log_event
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from ocurate.analysis.calibration import Calibration, CALIBRATION_POINTS, target_index
+from app.analysis.calibration import Calibration, CALIBRATION_POINTS, target_index
 
 
 def test_calibration_points_are_a_4x4_grid_from_0_1_to_0_9_row_major():

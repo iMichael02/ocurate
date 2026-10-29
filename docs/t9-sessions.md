@@ -2,7 +2,7 @@
 
 The web server calls `POST /sessions` to start a Session for a Learner. This service answers with a session id and a short-lived token. The web server hands both to the browser, and the browser puts the token in its WebSocket `hello` message (T8). Only the web server can create Sessions, because only it has the API key.
 
-Code: [tokens.py](../ocurate/sessions/tokens.py) (signing, one-time use), [sessions_api.py](../ocurate/api/sessions_api.py) (the endpoint), [schemas/sessions.py](../ocurate/schemas/sessions.py) (request and response).
+Code: [tokens.py](../app/sessions/tokens.py) (signing, one-time use), [sessions_api.py](../app/api/sessions_api.py) (the endpoint), [schemas/sessions.py](../app/schemas/sessions.py) (request and response).
 
 ## Request and response
 
@@ -75,7 +75,7 @@ Local test run (PowerShell; in a second window for the request). Set `OCURATE_DA
 
 ```
 $env:OCURATE_API_KEY = "dev-key"; $env:OCURATE_DEV_MODE = "1"; $env:OCURATE_DATABASE_URL = "<url from the README>"
-venv\Scripts\uvicorn ocurate.app:app
+venv\Scripts\uvicorn app.app:app
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/sessions -Headers @{"X-API-Key"="dev-key"} -ContentType "application/json" -Body '{"passage_id": "default"}'
 ```
 

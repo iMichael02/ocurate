@@ -3,10 +3,10 @@ import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
-from ocurate.config import load_settings
-from ocurate.log_setup import log_event
-from ocurate.passages.passage import Passage, UnknownPassageError, build_default_passage
-from ocurate.schemas.passage import passage_summary
+from app.config import load_settings
+from app.log_setup import log_event
+from app.passages.passage import Passage, UnknownPassageError, build_default_passage
+from app.schemas.passage import passage_summary
 
 logger = logging.getLogger(__name__)
 

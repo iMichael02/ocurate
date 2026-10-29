@@ -6,8 +6,8 @@ import threading
 
 import pytest
 
-from ocurate.config import Settings
-from ocurate.sessions.tokens import (InvalidSignature, SessionGrant, TokenAlreadyUsed, TokenExpired, TokenStore,
+from app.config import Settings
+from app.sessions.tokens import (InvalidSignature, SessionGrant, TokenAlreadyUsed, TokenExpired, TokenStore,
                     TooManySessions, UnknownSession, build_token_store)
 
 SECRET = "test-token-secret"

@@ -6,10 +6,10 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.websockets import WebSocketDisconnect
 
-from ocurate.log_setup import log_event
-from ocurate.passages.passage_store import StoredPassageError, get_passage
-from ocurate.schemas import protocol
-from ocurate.sessions.session_manager import Authenticated, PassageUnavailable, Session
+from app.log_setup import log_event
+from app.passages.passage_store import StoredPassageError, get_passage
+from app.schemas import protocol
+from app.sessions.session_manager import Authenticated, PassageUnavailable, Session
 
 logger = logging.getLogger(__name__)
 

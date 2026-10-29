@@ -4,12 +4,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-import ocurate.api.sessions_api as sessions_api
-from ocurate.app import create_app
-from ocurate.config import Settings
-from ocurate.passages.passage import UnknownPassageError, build_default_passage
-from ocurate.passages.passage_store import StoredPassageError
-from ocurate.sessions.tokens import TokenAlreadyUsed
+import app.api.sessions_api as sessions_api
+from app.app import create_app
+from app.config import Settings
+from app.passages.passage import UnknownPassageError, build_default_passage
+from app.passages.passage_store import StoredPassageError
+from app.sessions.tokens import TokenAlreadyUsed
 
 API_KEY = "test-api-key-value"
 SECRET = "test-token-secret-value"

@@ -1,7 +1,7 @@
 import pytest
 
-from ocurate.analysis.cell_layout import cell_at
-from ocurate.schemas.protocol import CellRect
+from app.analysis.cell_layout import cell_at
+from app.schemas.protocol import CellRect
 
 
 def grid(rows=2, columns=3, gap=0.0):

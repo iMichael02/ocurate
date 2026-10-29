@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from ocurate.passages.passage import UnknownPassageError, build_default_passage
-from ocurate.passages.passage_store import StoredPassageError, get_passage, init_db, list_passages
+from app.passages.passage import UnknownPassageError, build_default_passage
+from app.passages.passage_store import StoredPassageError, get_passage, init_db, list_passages
 
 
 def mock_engine(*results):

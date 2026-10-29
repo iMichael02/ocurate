@@ -5,14 +5,14 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from ocurate.config import load_settings
-from ocurate.log_setup import configure_logging, log_event
-from ocurate.passages.passage import UnknownPassageError
-from ocurate.passages.passage_store import StoredPassageError, get_passage, list_passages
-from ocurate.schemas.passage import PassageSummary, passage_summary
-from ocurate.api.sessions_api import router as sessions_router
-from ocurate.sessions.tokens import build_token_store
-from ocurate.api.ws_api import router as ws_router
+from app.config import load_settings
+from app.log_setup import configure_logging, log_event
+from app.passages.passage import UnknownPassageError
+from app.passages.passage_store import StoredPassageError, get_passage, list_passages
+from app.schemas.passage import PassageSummary, passage_summary
+from app.api.sessions_api import router as sessions_router
+from app.sessions.tokens import build_token_store
+from app.api.ws_api import router as ws_router
 
 logger = logging.getLogger(__name__)
 

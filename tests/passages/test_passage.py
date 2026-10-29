@@ -1,6 +1,6 @@
 import pytest
 
-from ocurate.passages.passage import Passage, text_to_braille, build_default_passage
+from app.passages.passage import Passage, text_to_braille, build_default_passage
 
 
 def test_encodes_hello_to_braille():

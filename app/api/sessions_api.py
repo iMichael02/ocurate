@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 
-from ocurate.log_setup import log_event
-from ocurate.passages.passage import UnknownPassageError
-from ocurate.passages.passage_store import StoredPassageError, get_passage
-from ocurate.schemas.sessions import CreateSessionRequest, CreateSessionResponse
-from ocurate.sessions.tokens import TooManySessions
+from app.log_setup import log_event
+from app.passages.passage import UnknownPassageError
+from app.passages.passage_store import StoredPassageError, get_passage
+from app.schemas.sessions import CreateSessionRequest, CreateSessionResponse
+from app.sessions.tokens import TooManySessions
 
 logger = logging.getLogger(__name__)
 

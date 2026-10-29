@@ -13,15 +13,15 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-from ocurate.analysis.calibration import CALIBRATION_POINTS, Calibration, target_index
-from ocurate.analysis.cell_layout import cell_at
-from ocurate.analysis.eye_features import extract_features
-from ocurate.analysis.fixation_detector import FixationDetector
-from ocurate.analysis.gaze_smoother import GazeSmoother
-from ocurate.log_setup import log_event
-from ocurate.analysis.reading_session import ReadingSession
-from ocurate.schemas import protocol
-from ocurate.sessions.tokens import TokenError
+from app.analysis.calibration import CALIBRATION_POINTS, Calibration, target_index
+from app.analysis.cell_layout import cell_at
+from app.analysis.eye_features import extract_features
+from app.analysis.fixation_detector import FixationDetector
+from app.analysis.gaze_smoother import GazeSmoother
+from app.log_setup import log_event
+from app.analysis.reading_session import ReadingSession
+from app.schemas import protocol
+from app.sessions.tokens import TokenError
 
 logger = logging.getLogger(__name__)
 

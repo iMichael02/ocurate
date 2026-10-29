@@ -4,7 +4,7 @@ from typing import Optional
 
 import numpy as np
 
-from ocurate.analysis.gaze_model import GazeModel
+from app.analysis.gaze_model import GazeModel
 
 GRID_SIDE = 4
 GRID_MIN = 0.1

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from ocurate.app import create_app
-from ocurate.config import Settings
+from app.app import create_app
+from app.config import Settings
 
 
 def test_health_endpoint_answers_ok():

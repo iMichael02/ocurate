@@ -1,4 +1,4 @@
-from ocurate.analysis.fixation_detector import FixationDetector
+from app.analysis.fixation_detector import FixationDetector
 
 
 def test_no_fixation_reported_before_min_duration():
