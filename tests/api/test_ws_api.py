@@ -11,7 +11,9 @@ from app.app import create_app
 from app.config import Settings
 from app.passages.passage import Passage, UnknownPassageError
 from app.schemas import protocol
+from app.sessions.tokens import build_token_store
 from tests.sessions.test_session_manager import CELL_CENTRES, frame, hello, quadrant_layout
+from tests.sessions.test_tokens import FakeClock
 
 DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"
 PASSAGE = Passage(["ab", "cd"])
@@ -94,6 +96,22 @@ def test_a_token_works_once():
     with client.websocket_connect("/ws") as second:
         second.send_text(hello(token=token))
         assert receive(second).code == "invalid_token"
+
+
+def test_an_expired_token_is_refused_with_4401():
+
+    app = make_app()
+    clock = FakeClock(1000.0)
+    # create_app uses the real clock, so swap in a store we can move forward.
+    app.state.tokens = build_token_store(app.state.settings, clock)
+    token = new_token(app)
+    clock.now += app.state.settings.token_ttl_seconds + 1
+
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        websocket.send_text(hello(token=token))
+
+        assert receive(websocket).code == "invalid_token"
+        assert expect_close(websocket) == protocol.CLOSE_INVALID_TOKEN
 
 
 def test_an_unsupported_version_is_refused_with_4409():
