@@ -31,8 +31,8 @@ Browser (web interface)            Web server                    Gaze-analysis s
 2. The browser fetches the Passage (text, counts, first and last Cell) from `GET /passages/{id}` and renders it.
 3. The browser opens one WebSocket to this service, authenticating with the token, and sends the protocol `version` in its first message.
 4. Calibration, then reading, run over that same socket (see the protocol below).
-5. On completion this service sends the result to the web server over a signed, idempotent callback keyed by session id (retried until acknowledged), and also streams it to the browser for display. The browser never relays the result, so a stored result cannot be forged by the Learner.
-6. If the Session ends abandoned, the callback reports only `abandoned`.
+5. On completion this service sends the result to the web server over a signed, idempotent callback keyed by session id (retried for up to 15 minutes until acknowledged), and also streams it to the browser for display. The browser never relays the result, so a stored result cannot be forged by the Learner.
+6. If the Session ends abandoned, no callback is sent.
 
 **WebSocket protocol** (JSON text messages, each with a `type`; the protocol `version` is sent in the first message)
 
