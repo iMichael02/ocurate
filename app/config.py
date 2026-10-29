@@ -28,6 +28,10 @@ class Settings:
     max_concurrent_sessions: int = 100
     max_calibration_attempts: int = 3
 
+    # Browser origins allowed to open /ws and to call GET /passages (CORS).
+    # Empty refuses every browser origin; clients that send no Origin are not checked.
+    allowed_origins: tuple = ()
+
     log_level: str = "INFO"
 
     # Local dev only: with no token secret set, a random one is made at startup.
@@ -44,6 +48,11 @@ def boolean(raw):
         return False
 
     raise ValueError(raw)
+
+
+def origin_list(raw):
+
+    return tuple(origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip())
 
 
 def _read(name, cast, default):
@@ -75,6 +84,7 @@ def load_settings():
         max_frames_per_second=_read("MAX_FRAMES_PER_SECOND", int, defaults.max_frames_per_second),
         max_concurrent_sessions=_read("MAX_CONCURRENT_SESSIONS", int, defaults.max_concurrent_sessions),
         max_calibration_attempts=_read("MAX_CALIBRATION_ATTEMPTS", int, defaults.max_calibration_attempts),
+        allowed_origins=_read("ALLOWED_ORIGINS", origin_list, defaults.allowed_origins),
         log_level=_read("LOG_LEVEL", str, defaults.log_level).upper(),
         dev_mode=_read("DEV_MODE", boolean, defaults.dev_mode),
     )

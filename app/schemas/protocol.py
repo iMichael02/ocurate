@@ -27,6 +27,7 @@ ERROR_CODES = (
     "out_of_order",
     "timestamp_regression",
     "calibration_failed",
+    "rate_limited",
 )
 
 ABANDON_REASONS = (
@@ -36,13 +37,17 @@ ABANDON_REASONS = (
     "frame_timeout",
     "protocol_error",
     "calibration_failed",
+    "rate_limited",
 )
 
 CLOSE_NORMAL = 1000
+CLOSE_POLICY_VIOLATION = 1008
+CLOSE_TRY_AGAIN_LATER = 1013
 CLOSE_INVALID_MESSAGE = 4400
 CLOSE_INVALID_TOKEN = 4401
 CLOSE_TIMEOUT = 4408
 CLOSE_UNSUPPORTED_VERSION = 4409
+CLOSE_RATE_LIMITED = 4429
 
 
 class Message(BaseModel):

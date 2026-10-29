@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -39,8 +40,13 @@ def create_app(settings=None):
     app.state.settings = settings
     app.state.engine = engine
     app.state.tokens = build_token_store(settings)
+    app.state.live_sessions = 0
     # Called with each finished Session's Outcome; the signed result callback replaces it.
     app.state.on_session_finished = lambda outcome: None
+
+    if settings.allowed_origins:
+        # Read-only: the dev page on :5173 fetches GET /passages from :8000.
+        app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins), allow_methods=["GET"])
 
     def require_engine():
 

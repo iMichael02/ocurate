@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 
 import pytest
@@ -13,7 +14,7 @@ from app.passages.passage import Passage, UnknownPassageError
 from app.schemas import protocol
 from app.sessions.tokens import build_token_store
 from tests.sessions.test_session_manager import CELL_CENTRES, frame, hello, quadrant_layout
-from tests.sessions.test_tokens import FakeClock
+from tests.fake_clock import FakeClock
 
 DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"
 PASSAGE = Passage(["ab", "cd"])
@@ -32,14 +33,29 @@ def stored_passages(monkeypatch):
     monkeypatch.setattr(ws_api, "get_passage", fake_get_passage)
 
 
-def make_app(**overrides):
+def make_app(clock=None, **overrides):
+    """`clock` replaces the token store's clock, so a test can move time forward."""
 
     settings = Settings(api_key="key", token_secret="secret", database_url=DATABASE_URL, **overrides)
     app = create_app(settings)
+
+    if clock is not None:
+        app.state.tokens = build_token_store(settings, clock)
+
     app.state.finished = []
     app.state.on_session_finished = app.state.finished.append
 
     return app
+
+
+def capture_refusals(caplog):
+    """create_app resets the root logging handlers, so listen on the Session logger itself."""
+
+    logger = logging.getLogger("app.sessions.session_manager")
+    logger.addHandler(caplog.handler)
+    logger.setLevel(logging.WARNING)
+
+    return logger
 
 
 def new_token(app):
@@ -98,14 +114,14 @@ def test_a_token_works_once():
         assert receive(second).code == "invalid_token"
 
 
-def test_an_expired_token_is_refused_with_4401():
+def test_an_expired_token_is_refused_with_4401(caplog):
 
-    app = make_app()
     clock = FakeClock(1000.0)
-    # create_app uses the real clock, so swap in a store we can move forward.
-    app.state.tokens = build_token_store(app.state.settings, clock)
+    app = make_app(clock)
     token = new_token(app)
     clock.now += app.state.settings.token_ttl_seconds + 1
+
+    capture_refusals(caplog)
 
     with TestClient(app).websocket_connect("/ws") as websocket:
         websocket.send_text(hello(token=token))
@@ -113,12 +129,15 @@ def test_an_expired_token_is_refused_with_4401():
         assert receive(websocket).code == "invalid_token"
         assert expect_close(websocket) == protocol.CLOSE_INVALID_TOKEN
 
+    assert "session_token_refused reason=expired" in caplog.messages
 
-def test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on():
+
+def test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on(caplog):
 
     app = make_app()
     token = new_token(app)
     client = TestClient(app)
+    capture_refusals(caplog)
 
     with client.websocket_connect("/ws") as first:
         first.send_text(hello(token=token))
@@ -131,10 +150,101 @@ def test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on():
             assert receive(second).code == "invalid_token"
             assert expect_close(second) == protocol.CLOSE_INVALID_TOKEN
 
+        assert "session_token_refused reason=already_used" in caplog.messages
+
         first.send_text(quadrant_layout())
         first.send_text(frame(0.0, (0.1, 0.1)))
 
         assert receive(first).type == "calibration_status"
+
+
+def test_a_browser_origin_that_is_not_listed_is_refused():
+
+    app = make_app(allowed_origins=("http://localhost:5173",))
+
+    with pytest.raises(WebSocketDisconnect):
+        with TestClient(app).websocket_connect("/ws", headers={"origin": "https://evil.example"}):
+            pass
+
+
+def test_a_listed_origin_is_accepted():
+
+    app = make_app(allowed_origins=("http://localhost:5173",))
+
+    with TestClient(app).websocket_connect("/ws", headers={"origin": "http://localhost:5173"}) as websocket:
+        websocket.send_text(hello(token=new_token(app)))
+
+        assert receive(websocket).type == "hello_ack"
+
+
+def test_no_origin_is_accepted_because_only_browsers_send_one():
+
+    app = make_app(allowed_origins=("http://localhost:5173",))
+
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        websocket.send_text(hello(token=new_token(app)))
+
+        assert receive(websocket).type == "hello_ack"
+
+
+def test_with_no_origins_listed_every_browser_origin_is_refused():
+
+    app = make_app()
+
+    with pytest.raises(WebSocketDisconnect):
+        with TestClient(app).websocket_connect("/ws", headers={"origin": "http://localhost:5173"}):
+            pass
+
+
+def test_a_socket_over_the_live_session_cap_is_closed_with_1013():
+
+    app = make_app(max_concurrent_sessions=1)
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws") as first:
+        first.send_text(hello(token=new_token(app)))
+        assert receive(first).type == "hello_ack"
+
+        with client.websocket_connect("/ws") as second:
+            assert expect_close(second) == protocol.CLOSE_TRY_AGAIN_LATER
+
+    assert app.state.live_sessions == 0
+
+
+def test_a_closed_session_frees_its_place_under_the_cap():
+
+    app = make_app(max_concurrent_sessions=1)
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws") as first:
+        first.send_text(hello(token=new_token(app)))
+        assert receive(first).type == "hello_ack"
+
+    with client.websocket_connect("/ws") as second:
+        second.send_text(hello(token=new_token(app)))
+
+        assert receive(second).type == "hello_ack"
+
+
+def test_a_frame_flood_is_closed_with_4429():
+
+    app = make_app(max_frames_per_second=2)
+
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        websocket.send_text(hello(token=new_token(app)))
+        assert receive(websocket).type == "hello_ack"
+        websocket.send_text(quadrant_layout())
+
+        for i in range(10):
+            websocket.send_text(frame(float(i), (0.1, 0.1)))
+
+        types_seen = []
+        with pytest.raises(WebSocketDisconnect) as closed:
+            while True:
+                types_seen.append(receive(websocket).type)
+
+    assert closed.value.code == protocol.CLOSE_RATE_LIMITED
+    assert "abandoned" in types_seen
 
 
 def test_an_unsupported_version_is_refused_with_4409():
