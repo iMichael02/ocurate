@@ -68,6 +68,9 @@ The token must not travel in a URL (query string or path). URLs end up in browse
 
 All four are `TokenError`, so T8 can catch that one class and close with `4401` (`invalid_token`).
 
+The expired and reused cases are now tested on a real WebSocket in `tests/api/test_ws_api.py`: both get `invalid_token` and close `4401`.
+In the reused case the first socket is still open and keeps working.
+
 ## Config
 
 | Variable | Default | Meaning |
