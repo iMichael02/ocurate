@@ -20,8 +20,9 @@ GRADIENT_THRESHOLD_FACTOR = 0.3
 WEIGHT_BLUR_SIGMA = 1.0
 
 # Peaks closer than this (px) to the best centre are part of the same peak when
-# measuring confidence.
-PEAK_EXCLUSION_RADIUS = 5.0
+# measuring confidence. It must exceed the iris radius in the crop (5-8 px for
+# a 40 px wide crop of an eye), or the iris rim counts as a rival peak.
+PEAK_EXCLUSION_RADIUS = 10.0
 
 
 def _gaussian_blur(image, sigma):
