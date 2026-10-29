@@ -1,6 +1,6 @@
 # Eye centre (Timm & Barth): what the browser computes
 
-Decision and trade-offs: [ADR 0004](./adr/0004-browser-computed-eye-centre.md). Reference implementation: [`eye_centre.py`](../eye_centre.py). Golden vectors: `tests/golden/eye_centre.json`. Protocol field: `frame.eye_centres` (version 2), see [websocket-protocol.md](./websocket-protocol.md).
+Decision and trade-offs: [ADR 0004](./adr/0004-browser-computed-eye-centre.md). Reference implementation: [`eye_centre.py`](../app/analysis/eye_centre.py). Golden vectors: `tests/analysis/golden/eye_centre.json`. Protocol field: `frame.eye_centres` (version 2), see [websocket-protocol.md](./websocket-protocol.md).
 
 Only the two numbers per eye and a confidence are sent. The crop never leaves the browser.
 

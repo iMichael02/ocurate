@@ -2,7 +2,7 @@
 
 The web server calls `POST /sessions` to start a Session for a Learner. This service answers with a session id and a short-lived token. The web server hands both to the browser, and the browser puts the token in its WebSocket `hello` message (T8). Only the web server can create Sessions, because only it has the API key.
 
-Code: [tokens.py](../tokens.py) (signing, one-time use), [sessions_api.py](../sessions_api.py) (the endpoint), [schemas/sessions.py](../schemas/sessions.py) (request and response).
+Code: [tokens.py](../app/sessions/tokens.py) (signing, one-time use), [sessions_api.py](../app/api/sessions_api.py) (the endpoint), [schemas/sessions.py](../app/schemas/sessions.py) (request and response).
 
 ## Request and response
 
@@ -85,13 +85,13 @@ Local test run (PowerShell; in a second window for the request). Set `OCURATE_DA
 
 ```
 $env:OCURATE_API_KEY = "dev-key"; $env:OCURATE_DEV_MODE = "1"; $env:OCURATE_DATABASE_URL = "<url from the README>"
-venv\Scripts\uvicorn app:app
+venv\Scripts\uvicorn app.app:app
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/sessions -Headers @{"X-API-Key"="dev-key"} -ContentType "application/json" -Body '{"passage_id": "default"}'
 ```
 
 ## Logging
 
-We log `session_created` with the session id and Passage id, `session_create_refused` with a reason (`unauthorized`, `api_key_unset`, `token_secret_unset` or `too_many_pending`), and `passage_database_error` with the error class. The API key, the token and the secret are never logged, and `tests/test_sessions_api.py` checks this.
+We log `session_created` with the session id and Passage id, `session_create_refused` with a reason (`unauthorized`, `api_key_unset`, `token_secret_unset` or `too_many_pending`), and `passage_database_error` with the error class. The API key, the token and the secret are never logged, and `tests/api/test_sessions_api.py` checks this.
 
 ## Known limits
 

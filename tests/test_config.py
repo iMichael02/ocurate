@@ -1,6 +1,6 @@
 import pytest
 
-from config import load_settings
+from app.config import load_settings
 
 
 def test_defaults_when_environment_is_empty(monkeypatch):
