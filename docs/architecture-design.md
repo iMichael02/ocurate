@@ -31,8 +31,8 @@ Browser (web interface)            Web server                    Gaze-analysis s
 2. The browser fetches the Passage (text, counts, first and last Cell) from `GET /passages/{id}` and renders it.
 3. The browser opens one WebSocket to this service, authenticating with the token, and sends the protocol `version` in its first message.
 4. Calibration, then reading, run over that same socket (see the protocol below).
-5. On completion this service sends the result to the web server over a signed, idempotent callback keyed by session id (retried until acknowledged), and also streams it to the browser for display. The browser never relays the result, so a stored result cannot be forged by the Learner.
-6. If the Session ends abandoned, the callback reports only `abandoned`.
+5. On completion this service sends the result to the web server over a signed, idempotent callback keyed by session id (retried for up to 15 minutes until acknowledged), and also streams it to the browser for display. The browser never relays the result, so a stored result cannot be forged by the Learner.
+6. If the Session ends abandoned, no callback is sent.
 
 **WebSocket protocol** (JSON text messages, each with a `type`; the protocol `version` is sent in the first message)
 
@@ -75,7 +75,7 @@ Use MediaPipe Face Landmarker, **running in the browser** (MediaPipe Tasks Web),
 
 MediaPipe does not directly determine which Braille character the learner is looking at. It provides the visual features needed by the gaze model.
 
-The browser sends this service only the landmark subset the features need, plus the facial transformation matrix. On protocol version 2 it also sends a per-eye centre it located with the Timm & Barth gradient method on a small eye crop, so no pixels leave the browser (ADR 0004, [docs/eye-centre.md](./docs/eye-centre.md)); the service appends them to the feature vector (24 values instead of 20) and falls back to the landmark mean when the browser's confidence is low. `eye_features.py` (`extract_features`) stays in this service so the 20-value feature definition has a single implementation and the model's inputs can change without a frontend release.
+The browser sends this service only the landmark subset the features need, plus the facial transformation matrix. On protocol version 2 it also sends a per-eye centre it located with the Timm & Barth gradient method on a small eye crop, so no pixels leave the browser (ADR 0004, [docs/eye-centre.md](./eye-centre.md)); the service appends them to the feature vector (24 values instead of 20) and falls back to the landmark mean when the browser's confidence is low. `eye_features.py` (`extract_features`) stays in this service so the 20-value feature definition has a single implementation and the model's inputs can change without a frontend release.
 
 ## 3. Modified WebEyeTrack ("BlazeGaze") = gaze estimator
 
@@ -125,7 +125,7 @@ No need for perfect pixel-level gaze estimation. Because the application control
 
 If the gaze model predicts (x,y)=(320,250) and that coordinate falls inside C3, the system assigns: Current gaze → C3. The system becomes (x,y) → Braille character rather than requiring extremely precise gaze coordinates. All lines are assumed to have the same number of characters, which keeps the Passage's grid uniform.
 
-The browser, which renders the Passage, is the only party that knows where each Cell sits in pixels, so it reports the Cell Layout (one normalized rectangle per Cell) once at Session start. This service maps each Fixation position to a Cell by finding the rectangle that contains it, replacing the uniform-grid arithmetic in `gaze_to_braille_cell`. Mapping from rectangles rather than a computed grid also leaves room for Grade 2 or non-uniform layouts later (ADR 0002).
+The browser, which renders the Passage, is the only party that knows where each Cell sits in pixels, so it reports the Cell Layout (one normalized rectangle per Cell) once at Session start. This service maps each Fixation position to a Cell by finding the rectangle that contains it, replacing the earlier uniform-grid arithmetic (`cell_layout.cell_at`). Mapping from rectangles rather than a computed grid also leaves room for Grade 2 or non-uniform layouts later (ADR 0002).
 
 ## 6. Reading speed (headline metric)
 

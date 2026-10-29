@@ -1,6 +1,6 @@
 # WebSocket protocol (draft, T2)
 
-Status: schemas implemented in [`schemas/protocol.py`](../schemas/protocol.py) and tested in `tests/test_protocol.py`; the WebSocket endpoint and Session manager are not written yet. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
+Status: schemas in [`app/schemas/protocol.py`](../app/schemas/protocol.py) (tested in `tests/test_protocol.py`), the Session state machine in [`session_manager.py`](../app/sessions/session_manager.py) and the endpoint in [`ws_api.py`](../app/api/ws_api.py) are implemented. Not done yet: the signed result callback, per-Session frame-rate limiting and a cap on live Sessions. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](./architecture-design.md) section 0.
 
 Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed result callback (web server ↔ service) are separate HTTP contracts and are out of scope.
 
@@ -13,6 +13,10 @@ Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed r
 ## Enforced by the schemas, and by the Session manager
 
 The schemas check the shape of one message. Rules that depend on Session state are the Session manager's job: message order, the Layout covering every Cell of the Passage, monotonic `t`, and the 30 s timeout. Row and column indices are 0-based.
+
+## Endpoint
+
+The browser opens one WebSocket at `/ws` (for example `ws://localhost:8000/ws`) and sends `hello` first. Messages are text frames; a binary frame, or a frame above `OCURATE_MAX_MESSAGE_BYTES`, is `invalid_message`. Each message is handled off the event loop. Silence is timed by `OCURATE_SESSION_INACTIVITY_SECONDS` (30 s): any message resets the timer, not only frames.
 
 ## Conventions
 
@@ -76,6 +80,7 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `out_of_order` (message not allowed in the current state)
 - `timestamp_regression`
 - `calibration_failed` (sent with the final failed attempt, together with `abandoned`)
+- `rate_limited` (frames faster than the cap, together with `abandoned`)
 
 `abandoned.reason`:
 
@@ -85,16 +90,22 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `frame_timeout` (30 s without frames)
 - `protocol_error`
 - `calibration_failed` (all attempts used)
+- `rate_limited` (frames faster than the cap)
+
+Before the handshake the service checks the `Origin` header against `OCURATE_ALLOWED_ORIGINS`. An unlisted origin is refused with HTTP 403 (a close before accept); a request with no `Origin` is let through.
 
 WebSocket close codes:
 
 | Code | Meaning |
 |---|---|
 | `1000` | normal completion, or abandoned after calibration attempts are exhausted |
-| `4400` | invalid message |
+| `4400` | invalid message, and also `out_of_order` and `timestamp_regression`. After the handshake the service sends the `error`, then `abandoned{reason: "protocol_error"}`, then closes. |
 | `4401` | bad token |
 | `4408` | timeout |
 | `4409` | unsupported version |
+| `4429` | frames arrived faster than `OCURATE_MAX_FRAMES_PER_SECOND` (two-second burst allowance). The service sends `error{code: "rate_limited"}`, then `abandoned{reason: "rate_limited"}`, then closes. |
+| `1013` | the service already has `OCURATE_MAX_CONCURRENT_SESSIONS` live sockets. Sent right after the handshake, before `hello`; the token is not spent, so the browser may retry. |
+| `1011` | the Passage for a valid token could not be loaded (database down). No message is sent; the token is spent, so the web server must create a new Session. |
 
 ## State order
 
@@ -106,6 +117,18 @@ frame (with target) … → calibration_status … → ready
 calibration_done
 frame (no target) … → reading_started → fixation … → completed
 ```
+
+## Phase rules the Session manager applies
+
+- Only the handshake closes the socket without an `abandoned`: a refused version, a refused token or a message before `hello`.
+- `layout` must list exactly the Passage's Cells (every row and column once, no others), or the message is `invalid_message`.
+- `viewport_changed` and `quit` end the Session as `abandoned` (close `1000`) in any phase after `hello`.
+- Frames that carry nothing for the current phase are ignored, not errors: untagged frames while a calibration dot settles, and frames still in flight after calibration finished or failed, or tagged frames during reading. Their `t` must still not go backwards.
+- A calibration `target` is matched to the nearest of the 16 grid points (within 0.05 on each axis); a target off the grid is ignored.
+- Calibration is judged when the last target (index 15) has received 20 tagged frames, counting frames without a usable face. `calibration_status` is sent when the target changes and then every 5 tagged frames.
+- Reading starts at the first `fixation` on the Passage's first Cell (`reading_started`, then `fixation`). Fixations on other Cells before that are not reported. After that one `fixation` is sent each time the fixated Cell changes. A gaze that is on no Cell (more than 0.02 from every rectangle) reports nothing.
+- On the last Cell the service sends `fixation`, `completed`, then closes with `1000`.
+- Frame `t` is in ms; the analysis divides by 1000, and `fixation.t` is the `t` of the frame that completed the fixation.
 
 ## Calibration retries
 

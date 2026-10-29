@@ -1,6 +1,6 @@
 # Ocurate
 
-A webcam-based tool that tracks a learner's eye gaze while they read Braille displayed on screen, so their Braille-reading process can be evaluated. Built for sighted people training to become caregivers of blind people, to gauge their own Braille reading progress. This repo is the gaze-analysis service behind a separate web interface. See [architecture-design.md](./architecture-design.md) for the technical pipeline.
+A webcam-based tool that tracks a learner's eye gaze while they read Braille displayed on screen, so their Braille-reading process can be evaluated. Built for sighted people training to become caregivers of blind people, to gauge their own Braille reading progress. This repo is the gaze-analysis service behind a separate web interface. See [docs/architecture-design.md](./docs/architecture-design.md) for the technical pipeline.
 
 ## Language
 

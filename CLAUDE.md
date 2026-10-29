@@ -1,10 +1,10 @@
 # Ocurate
 
-Webcam-based Braille reading tracker. This repo is the **gaze-analysis backend**; the web interface (browser UI plus its own web server) lives elsewhere. Read [CONTEXT.md](./CONTEXT.md) for domain terms and [architecture-design.md](./architecture-design.md) (section 0 especially) for the technical pipeline and the frontend ↔ backend contract before making changes.
+Webcam-based Braille reading tracker. This repo is the **gaze-analysis backend**; the web interface (browser UI plus its own web server) lives elsewhere. Read [CONTEXT.md](./CONTEXT.md) for domain terms and [docs/architecture-design.md](./docs/architecture-design.md) (section 0 especially) for the technical pipeline and the frontend ↔ backend contract before making changes.
 
 ## Stack
 
-Python 3.12, FastAPI (+ uvicorn), scikit-learn, numpy. Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. See README.md for running, testing and the `OCURATE_*` configuration.
+Python 3.12, FastAPI (+ uvicorn), scikit-learn, numpy, SQLAlchemy Core + PyMySQL (Passages only). Dependencies are listed in `requirements.txt`; install into `venv/` with `venv/bin/pip install -r requirements.txt`. See README.md for running, testing and the `OCURATE_*` configuration.
 
 ## Status of the split
 
@@ -12,36 +12,53 @@ The old standalone OpenCV app has been removed. The service skeleton exists; the
 
 ## Layout
 
-Service skeleton:
+The code is the `app` package. `tests/` mirrors it.
 
-- `app.py` — FastAPI app factory (`create_app`) with `GET /health`
-- `config.py` — `Settings`, read from `OCURATE_*` environment variables
-- `schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
-- `log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
+- `app/` — app factory, settings, logging
+- `app/api/` — HTTP and WebSocket routes
+- `app/sessions/` — Session state machine and tokens
+- `app/analysis/` — pure gaze and reading-analysis logic (no I/O)
+- `app/passages/` — Passage model and its MySQL store
+- `app/schemas/` — Pydantic request, response and protocol schemas
+- `docs/` — architecture, protocol and ADRs
+
+Modules:
+
+- `app/app.py` — FastAPI app factory (`create_app`) with `GET /health`, the Passage endpoints and the routers below
+- `app/config.py` — `Settings`, read from `OCURATE_*` environment variables
+- `app/schemas/protocol.py` — WebSocket message schemas (Pydantic), error/close codes, version handshake; see docs/websocket-protocol.md and docs/session-transcript.md
+- `app/api/sessions_api.py` — `POST /sessions` (API key, then Passage lookup, then a signed single-use token); `app/schemas/sessions.py` holds its request and response; see docs/t9-sessions.md
+- `app/api/ws_api.py` — the `/ws` WebSocket route: checks the token, loads the Passage, feeds each message to a `Session` and sends its replies; calls `app.state.on_session_finished(outcome)` when a Session ends
+- `app/sessions/session_manager.py` — `Session`: the per-socket state machine (hello → layout → calibration with retries → reading → completed/abandoned). No I/O, so tests drive it with plain messages
+- `app/analysis/cell_layout.py` — `cell_at`: maps a gaze point to a Cell from the browser-reported Layout rectangles
+- `app/sessions/tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
+- `app/log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
 Pure logic, reused by the service:
 
-- `eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
-- `eye_centre.py` — Python reference of the Timm & Barth eye-centre method the browser runs (ADR 0004, docs/eye-centre.md); the service itself only receives its output in `frame.eye_centres` (protocol v2), which `extract_features(frame, use_eye_centres=True)` turns into 4 extra features
-- `gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
-- `gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
-- `fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
-- `passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
-- `schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
-- `reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
+- `app/analysis/eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/analysis/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
+- `app/analysis/eye_centre.py` — Python reference of the Timm & Barth eye-centre method the browser runs (ADR 0004, docs/eye-centre.md); the service itself only receives its output in `frame.eye_centres` (protocol v2), which `extract_features(frame, use_eye_centres=True)` turns into 4 extra features
+- `app/analysis/gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
+- `app/analysis/gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
+- `app/analysis/fixation_detector.py` — dispersion + duration based fixation detection (`FixationDetector`)
+- `app/passages/passage.py` — `Passage` (a fixed Grade 1 Braille text with a uniform-width grid) and the ASCII→Braille Unicode table
+- `app/passages/passage_store.py` — the MySQL `passages` table (id + text lines): `init_db` creates it and keeps the default Passage in sync with the code; `get_passage` / `list_passages` read it back through `Passage` and raise `StoredPassageError` for a row that is not a valid Passage
+- `app/schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
+- `app/analysis/reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
-Needs changing:
+- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
-- `calibration.py` — still has the 9-point grid and the uniform-grid `gaze_to_braille_cell`. Target: a 16-point (4×4) grid, and Cell mapping from the browser-reported Cell Layout rectangles.
+Not written yet: the signed result callback (hook: `app.state.on_session_finished`).
 
-Not written yet: the Session manager (in-memory Session state), the WebSocket endpoint, `POST /sessions`, the token check and the signed result callback.
+Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passages`), a cap on live sockets (`app.state.live_sessions` vs `max_concurrent_sessions`, close `1013`), and `FrameRateLimiter` in `session_manager.py` (close `4429`). The limiter reads the arrival clock, the one exception to "browser timestamps only", because it must hold against a browser that lies about `frame.t`.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested, as are `config.py`, `log_setup.py` and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`, in subfolders that mirror the package). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
 - Keep `CONTEXT.md` a pure glossary (no implementation/pipeline details) and `architecture-design.md` as the pipeline/technical spec — don't let pipeline description creep back into `CONTEXT.md`.
-- This service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
+- Passages are reference data in MySQL; nothing else goes in the database. The service only reads them: the one write path is `passage_store.init_db` (run from the command line, not by the app), which creates the table and keeps the code-owned `default` Passage in sync with `build_default_passage`.
+- Apart from that Passage table, this service writes nothing to disk and keeps no history: the web server persists completed Sessions' results (see docs/adr/0003). Don't add file/DB logging here without revisiting that decision first. Calibration samples and the personalized model must never be stored.
 - All timing uses the browser's frame timestamps, never arrival time.

@@ -1,7 +1,7 @@
 import pytest
 
-from passage import Passage
-from reading_session import ReadingSession
+from app.passages.passage import Passage
+from app.analysis.reading_session import ReadingSession
 
 
 @pytest.fixture

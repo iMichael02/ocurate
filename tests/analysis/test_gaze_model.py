@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from gaze_model import GazeModel
+from app.analysis.gaze_model import GazeModel
 
 
 def test_predict_returns_none_before_training():

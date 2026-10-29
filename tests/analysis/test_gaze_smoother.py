@@ -1,6 +1,6 @@
 import numpy as np
 
-from gaze_smoother import GazeSmoother
+from app.analysis.gaze_smoother import GazeSmoother
 
 
 def test_first_update_passes_through_unchanged():

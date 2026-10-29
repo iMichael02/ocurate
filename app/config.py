@@ -17,7 +17,10 @@ class Settings:
     token_secret: Optional[str] = None
     callback_url: Optional[str] = None
     callback_secret: Optional[str] = None
+    database_url: Optional[str] = None
 
+    # Short on purpose: the token is only needed between POST /sessions
+    # and the browser opening the WebSocket.
     token_ttl_seconds: int = 60
     session_inactivity_seconds: float = 30.0
     max_message_bytes: int = 65536
@@ -25,7 +28,31 @@ class Settings:
     max_concurrent_sessions: int = 100
     max_calibration_attempts: int = 3
 
+    # Browser origins allowed to open /ws and to call GET /passages (CORS).
+    # Empty refuses every browser origin; clients that send no Origin are not checked.
+    allowed_origins: tuple = ()
+
     log_level: str = "INFO"
+
+    # Local dev only: with no token secret set, a random one is made at startup.
+    dev_mode: bool = False
+
+
+def boolean(raw):
+
+    value = raw.strip().lower()
+
+    if value in ("1", "true", "yes"):
+        return True
+    if value in ("0", "false", "no"):
+        return False
+
+    raise ValueError(raw)
+
+
+def origin_list(raw):
+
+    return tuple(origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip())
 
 
 def _read(name, cast, default):
@@ -50,11 +77,14 @@ def load_settings():
         token_secret=_read("TOKEN_SECRET", str, defaults.token_secret),
         callback_url=_read("CALLBACK_URL", str, defaults.callback_url),
         callback_secret=_read("CALLBACK_SECRET", str, defaults.callback_secret),
+        database_url=_read("DATABASE_URL", str, defaults.database_url),
         token_ttl_seconds=_read("TOKEN_TTL_SECONDS", int, defaults.token_ttl_seconds),
         session_inactivity_seconds=_read("SESSION_INACTIVITY_SECONDS", float, defaults.session_inactivity_seconds),
         max_message_bytes=_read("MAX_MESSAGE_BYTES", int, defaults.max_message_bytes),
         max_frames_per_second=_read("MAX_FRAMES_PER_SECOND", int, defaults.max_frames_per_second),
         max_concurrent_sessions=_read("MAX_CONCURRENT_SESSIONS", int, defaults.max_concurrent_sessions),
         max_calibration_attempts=_read("MAX_CALIBRATION_ATTEMPTS", int, defaults.max_calibration_attempts),
+        allowed_origins=_read("ALLOWED_ORIGINS", origin_list, defaults.allowed_origins),
         log_level=_read("LOG_LEVEL", str, defaults.log_level).upper(),
+        dev_mode=_read("DEV_MODE", boolean, defaults.dev_mode),
     )

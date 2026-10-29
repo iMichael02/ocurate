@@ -4,7 +4,7 @@ Eye Centre Localisation by Means of Gradients", 2011).
 The browser runs this algorithm on a small grayscale crop of each eye and
 sends the result in `frame.eye_centres`. This service never sees pixels. This
 module is the specification the browser implementation must reproduce
-(tests/golden/eye_centre.json); see docs/eye-centre.md for the crop definition.
+(tests/analysis/golden/eye_centre.json); see docs/eye-centre.md for the crop definition.
 """
 
 import numpy as np

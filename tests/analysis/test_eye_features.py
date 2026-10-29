@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from schemas import protocol
-from eye_features import (
+from app.schemas import protocol
+from app.analysis.eye_features import (
     normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE,
     IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP,
 )
@@ -186,7 +186,7 @@ def test_does_not_modify_the_frame():
 
 # --- eye centres from the browser (protocol v2) -------------------------------
 
-from eye_features import EYE_CENTRE_MIN_CONFIDENCE, FEATURE_SIZE_V2
+from app.analysis.eye_features import EYE_CENTRE_MIN_CONFIDENCE, FEATURE_SIZE_V2
 
 
 def _centres(left=(0.34, 0.41), right=(0.66, 0.39), confidence=0.9):

@@ -1,13 +1,14 @@
 import pytest
 
-from config import load_settings
+from app.config import load_settings
 
 
 def test_defaults_when_environment_is_empty(monkeypatch):
 
-    for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET",
+    for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET", "DATABASE_URL",
                  "TOKEN_TTL_SECONDS", "SESSION_INACTIVITY_SECONDS", "MAX_MESSAGE_BYTES",
-                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "LOG_LEVEL"):
+                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "ALLOWED_ORIGINS",
+                 "LOG_LEVEL"):
         monkeypatch.delenv("OCURATE_" + name, raising=False)
 
     settings = load_settings()
@@ -16,12 +17,14 @@ def test_defaults_when_environment_is_empty(monkeypatch):
     assert settings.token_secret is None
     assert settings.callback_url is None
     assert settings.callback_secret is None
+    assert settings.database_url is None
     assert settings.token_ttl_seconds == 60
     assert settings.session_inactivity_seconds == 30.0
     assert settings.max_message_bytes == 65536
     assert settings.max_frames_per_second == 30
     assert settings.max_concurrent_sessions == 100
     assert settings.max_calibration_attempts == 3
+    assert settings.allowed_origins == ()
     assert settings.log_level == "INFO"
 
 
@@ -53,3 +56,34 @@ def test_invalid_number_names_the_variable(monkeypatch):
 
     with pytest.raises(ValueError, match="OCURATE_MAX_FRAMES_PER_SECOND"):
         load_settings()
+
+
+def test_dev_mode_is_off_by_default(monkeypatch):
+
+    monkeypatch.delenv("OCURATE_DEV_MODE", raising=False)
+
+    assert load_settings().dev_mode is False
+
+
+@pytest.mark.parametrize("raw, expected", [("1", True), ("true", True), ("YES", True),
+                                           ("0", False), ("false", False), ("no", False)])
+def test_dev_mode_reads_flag(monkeypatch, raw, expected):
+
+    monkeypatch.setenv("OCURATE_DEV_MODE", raw)
+
+    assert load_settings().dev_mode is expected
+
+
+def test_invalid_flag_names_the_variable(monkeypatch):
+
+    monkeypatch.setenv("OCURATE_DEV_MODE", "maybe")
+
+    with pytest.raises(ValueError, match="OCURATE_DEV_MODE"):
+        load_settings()
+
+
+def test_allowed_origins_are_split_and_trimmed(monkeypatch):
+
+    monkeypatch.setenv("OCURATE_ALLOWED_ORIGINS", "http://localhost:5173, https://ocurate.example/ ,")
+
+    assert load_settings().allowed_origins == ("http://localhost:5173", "https://ocurate.example")
