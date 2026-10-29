@@ -48,7 +48,9 @@ Pure logic, reused by the service:
 
 - `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
-Not written yet: the signed result callback (hook: `app.state.on_session_finished`), frame-rate limiting, and a cap on live Sessions.
+Not written yet: the signed result callback (hook: `app.state.on_session_finished`).
+
+Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passages`), a cap on live sockets (`app.state.live_sessions` vs `max_concurrent_sessions`, close `1013`), and `FrameRateLimiter` in `session_manager.py` (close `4429`). The limiter reads the arrival clock, the one exception to "browser timestamps only", because it must hold against a browser that lies about `frame.t`.
 
 ## Testing
 

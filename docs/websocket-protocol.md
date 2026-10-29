@@ -80,6 +80,7 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `out_of_order` (message not allowed in the current state)
 - `timestamp_regression`
 - `calibration_failed` (sent with the final failed attempt, together with `abandoned`)
+- `rate_limited` (frames faster than the cap, together with `abandoned`)
 
 `abandoned.reason`:
 
@@ -89,6 +90,9 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `frame_timeout` (30 s without frames)
 - `protocol_error`
 - `calibration_failed` (all attempts used)
+- `rate_limited` (frames faster than the cap)
+
+Before the handshake the service checks the `Origin` header against `OCURATE_ALLOWED_ORIGINS`. An unlisted origin is refused with HTTP 403 (a close before accept); a request with no `Origin` is let through.
 
 WebSocket close codes:
 
@@ -99,6 +103,8 @@ WebSocket close codes:
 | `4401` | bad token |
 | `4408` | timeout |
 | `4409` | unsupported version |
+| `4429` | frames arrived faster than `OCURATE_MAX_FRAMES_PER_SECOND` (two-second burst allowance). The service sends `error{code: "rate_limited"}`, then `abandoned{reason: "rate_limited"}`, then closes. |
+| `1013` | the service already has `OCURATE_MAX_CONCURRENT_SESSIONS` live sockets. Sent right after the handshake, before `hello`; the token is not spent, so the browser may retry. |
 | `1011` | the Passage for a valid token could not be loaded (database down). No message is sent; the token is spent, so the web server must create a new Session. |
 
 ## State order

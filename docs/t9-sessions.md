@@ -68,7 +68,7 @@ The token must not travel in a URL (query string or path). URLs end up in browse
 
 All four are `TokenError`, so T8 can catch that one class and close with `4401` (`invalid_token`).
 
-The expired and reused cases are now tested on a real WebSocket in `tests/api/test_ws_api.py`: both get `invalid_token` and close `4401`.
+The expired and reused cases are covered on a real WebSocket by `test_an_expired_token_is_refused_with_4401` and `test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on` in `tests/api/test_ws_api.py`: both get `invalid_token` and close `4401`.
 In the reused case the first socket is still open and keeps working.
 
 ## Config
@@ -79,7 +79,7 @@ In the reused case the first socket is still open and keeps working.
 | `OCURATE_TOKEN_SECRET` | unset | HMAC secret for tokens. Unset means 503 for a caller with the key, unless dev mode. |
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | Token lifetime. Short on purpose, it only has to cover the time between creating the Session and opening the WebSocket. Must be above 0 or the app will not start. |
 | `OCURATE_DATABASE_URL` | unset | SQLAlchemy URL of the MySQL database holding the Passages (see README.md). Unset means 503. |
-| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Most Sessions that may wait for their token at once. |
+| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Most Sessions that may wait for their token at once. Also the most live WebSockets; an extra one is accepted and closed with `1013`, and its token is not spent. |
 | `OCURATE_DEV_MODE` | `0` | Local dev only. With no token secret, a random one is made at startup and a warning is logged. |
 
 There is no usable default secret. To make one: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.

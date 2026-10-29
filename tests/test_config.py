@@ -7,7 +7,8 @@ def test_defaults_when_environment_is_empty(monkeypatch):
 
     for name in ("API_KEY", "TOKEN_SECRET", "CALLBACK_URL", "CALLBACK_SECRET", "DATABASE_URL",
                  "TOKEN_TTL_SECONDS", "SESSION_INACTIVITY_SECONDS", "MAX_MESSAGE_BYTES",
-                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "LOG_LEVEL"):
+                 "MAX_FRAMES_PER_SECOND", "MAX_CONCURRENT_SESSIONS", "MAX_CALIBRATION_ATTEMPTS", "ALLOWED_ORIGINS",
+                 "LOG_LEVEL"):
         monkeypatch.delenv("OCURATE_" + name, raising=False)
 
     settings = load_settings()
@@ -23,6 +24,7 @@ def test_defaults_when_environment_is_empty(monkeypatch):
     assert settings.max_frames_per_second == 30
     assert settings.max_concurrent_sessions == 100
     assert settings.max_calibration_attempts == 3
+    assert settings.allowed_origins == ()
     assert settings.log_level == "INFO"
 
 
@@ -78,3 +80,10 @@ def test_invalid_flag_names_the_variable(monkeypatch):
 
     with pytest.raises(ValueError, match="OCURATE_DEV_MODE"):
         load_settings()
+
+
+def test_allowed_origins_are_split_and_trimmed(monkeypatch):
+
+    monkeypatch.setenv("OCURATE_ALLOWED_ORIGINS", "http://localhost:5173, https://ocurate.example/ ,")
+
+    assert load_settings().allowed_origins == ("http://localhost:5173", "https://ocurate.example")

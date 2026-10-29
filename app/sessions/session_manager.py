@@ -7,6 +7,7 @@ the Session ends completed or abandoned. See docs/websocket-protocol.md.
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional
@@ -32,6 +33,38 @@ CALIBRATION_SAMPLES_PER_POINT = 20
 STATUS_EVERY_FRAMES = 5
 
 CLOSE_INTERNAL_ERROR = 1011
+
+
+class FrameRateLimiter:
+    """Token bucket for one Session's messages. It refills at
+    `frames_per_second` and holds two seconds' worth, so a browser running at
+    the cap (the frontend sends at most 30 fps) is never refused for jitter or
+    for frames delivered in a batch; only a sustained higher rate runs it dry.
+
+    It reads the arrival clock, not frame.t: the limit polices what the
+    browser sends, and a browser that lies about frame.t must not escape it.
+    Analysis timing still uses frame.t only."""
+
+    def __init__(self, frames_per_second, clock=time.monotonic):
+
+        self._rate = frames_per_second
+        self._capacity = 2.0 * frames_per_second
+        self._clock = clock
+        self._tokens = self._capacity
+        self._last = clock()
+
+    def allow(self):
+
+        now = self._clock()
+        self._tokens = min(self._capacity, self._tokens + (now - self._last) * self._rate)
+        self._last = now
+
+        if self._tokens < 1.0:
+            return False
+
+        self._tokens -= 1.0
+
+        return True
 
 
 class PassageUnavailable(Exception):
@@ -80,11 +113,13 @@ class Outcome:
 class Session:
 
     def __init__(self, settings, authenticate: Callable[[str], Authenticated],
-                 calibration_factory=Calibration):
+                 calibration_factory=Calibration, rate_limiter=None):
         """`authenticate(token)` returns an Authenticated or raises TokenError
-        (bad token) or PassageUnavailable."""
+        (bad token) or PassageUnavailable. `rate_limiter`, if given, is asked
+        before each frame is accepted (see FrameRateLimiter)."""
 
         self._settings = settings
+        self._rate_limiter = rate_limiter
         self._authenticate = authenticate
         self._calibration_factory = calibration_factory
 
@@ -227,6 +262,13 @@ class Session:
     # --- frames ---------------------------------------------------------------
 
     def _on_frame(self, frame):
+
+        if self._rate_limiter is not None and not self._rate_limiter.allow():
+            log_event(logger, "session_rate_limited", logging.WARNING, session_id=self.session_id)
+            reply = self._abandon("rate_limited", protocol.CLOSE_RATE_LIMITED)
+            reply.messages.insert(0, protocol.Error(type="error", code="rate_limited",
+                                                    message="frames are arriving too fast"))
+            return reply
 
         if self.phase is Phase.LAYOUT:
             return self._violation("out_of_order", "layout must come before frames")

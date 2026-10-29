@@ -153,3 +153,30 @@ def test_the_engine_is_disposed_on_shutdown(monkeypatch):
         engine.dispose.assert_not_called()
 
     engine.dispose.assert_called_once()
+
+
+def test_a_listed_origin_gets_cors_headers_on_passages(store):
+
+    app = create_app(Settings(database_url=DATABASE_URL, allowed_origins=("http://localhost:5173",)))
+
+    response = TestClient(app).get("/passages", headers={"origin": "http://localhost:5173"})
+
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_an_unlisted_origin_gets_no_cors_headers(store):
+
+    app = create_app(Settings(database_url=DATABASE_URL, allowed_origins=("http://localhost:5173",)))
+
+    response = TestClient(app).get("/passages", headers={"origin": "https://evil.example"})
+
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_is_off_when_no_origins_are_listed(store):
+
+    app = create_app(Settings(database_url=DATABASE_URL))
+
+    response = TestClient(app).get("/passages", headers={"origin": "http://localhost:5173"})
+
+    assert "access-control-allow-origin" not in response.headers

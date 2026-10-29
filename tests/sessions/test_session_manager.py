@@ -7,9 +7,10 @@ from app.analysis.calibration import CALIBRATION_POINTS, Calibration, Calibratio
 from app.config import Settings
 from app.passages.passage import Passage
 from app.schemas import protocol
-from app.sessions.session_manager import (CALIBRATION_SAMPLES_PER_POINT, Authenticated, PassageUnavailable, Phase,
-                             Session)
+from app.sessions.session_manager import (CALIBRATION_SAMPLES_PER_POINT, Authenticated, FrameRateLimiter,
+                             PassageUnavailable, Phase, Session)
 from app.sessions.tokens import InvalidSignature, TokenAlreadyUsed
+from tests.fake_clock import FakeClock
 
 PASSAGE = Passage(["ab", "cd"])
 LAST_POINT = len(CALIBRATION_POINTS) - 1
@@ -699,3 +700,55 @@ def test_a_full_session_with_the_real_calibration_and_gaze_model():
             t += 33.0
 
     assert [m.type for m in sent] == ["reading_started", "fixation", "fixation", "completed"]
+
+
+# --- frame-rate limit -----------------------------------------------------------
+
+def test_the_limiter_lets_a_steady_30_fps_browser_through_for_a_minute():
+
+    clock = FakeClock(0.0)
+    limiter = FrameRateLimiter(30, clock)
+
+    for _ in range(30 * 60):
+        clock.now += 1 / 30
+        assert limiter.allow()
+
+
+def test_the_limiter_tolerates_a_batch_of_a_second_of_frames():
+
+    limiter = FrameRateLimiter(30, FakeClock(0.0))
+
+    assert all(limiter.allow() for _ in range(60))
+
+
+def test_the_limiter_refuses_a_sustained_flood_and_recovers_when_it_stops():
+
+    clock = FakeClock(0.0)
+    limiter = FrameRateLimiter(30, clock)
+
+    allowed = 0
+    for _ in range(500):
+        clock.now += 1 / 300
+        allowed += limiter.allow()
+
+    assert allowed < 200
+    assert not limiter.allow()
+
+    clock.now += 2.0
+    assert limiter.allow()
+
+
+def test_a_frame_over_the_limit_abandons_the_session():
+
+    clock = FakeClock(0.0)
+    session = Session(Settings(), authenticate, FakeCalibration, FrameRateLimiter(1, clock))
+    session.receive(hello())
+    session.receive(quadrant_layout())
+
+    replies = [session.receive(frame(float(i), (0.1, 0.1))) for i in range(3)]
+
+    assert types(replies[2]) == ["error", "abandoned"]
+    assert replies[2].messages[0].code == "rate_limited"
+    assert replies[2].messages[1].reason == "rate_limited"
+    assert replies[2].close_code == protocol.CLOSE_RATE_LIMITED
+    assert session.outcome.reason == "rate_limited"

@@ -9,7 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.log_setup import log_event
 from app.passages.passage_store import StoredPassageError, get_passage
 from app.schemas import protocol
-from app.sessions.session_manager import Authenticated, PassageUnavailable, Session
+from app.sessions.session_manager import Authenticated, FrameRateLimiter, PassageUnavailable, Session
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +50,38 @@ async def send_reply(websocket, reply):
     return False
 
 
+def origin_allowed(websocket, settings):
+    """Browsers always send Origin on a WebSocket handshake and a page cannot
+    change it, so it must be one we list. A client with no Origin is not a
+    browser page; the Session token is what protects it."""
+
+    origin = websocket.headers.get("origin")
+
+    return origin is None or origin.rstrip("/") in settings.allowed_origins
+
+
 @router.websocket("/ws")
 async def session_socket(websocket: WebSocket):
 
     app = websocket.app
     settings = app.state.settings
-    session = Session(settings, make_authenticator(app))
+
+    if not origin_allowed(websocket, settings):
+        log_event(logger, "ws_origin_refused", logging.WARNING, origin=websocket.headers.get("origin"))
+        # Closing before accept answers the handshake with HTTP 403.
+        await websocket.close(protocol.CLOSE_POLICY_VIOLATION)
+        return
 
     await websocket.accept()
+
+    # No await between this check and the increment, so the count cannot race.
+    if app.state.live_sessions >= settings.max_concurrent_sessions:
+        log_event(logger, "ws_refused_at_capacity", logging.WARNING, live=app.state.live_sessions)
+        await websocket.close(protocol.CLOSE_TRY_AGAIN_LATER)
+        return
+
+    app.state.live_sessions += 1
+    session = Session(settings, make_authenticator(app), rate_limiter=FrameRateLimiter(settings.max_frames_per_second))
 
     try:
         while True:
@@ -77,6 +101,7 @@ async def session_socket(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        app.state.live_sessions -= 1
         session.socket_closed()
 
         if session.outcome is not None:

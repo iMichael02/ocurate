@@ -40,6 +40,12 @@ venv/bin/uvicorn app.app:app --reload
 
 With `OCURATE_DEV_MODE=1` run it without `--reload`: the generated token secret and the pending tokens live in one process.
 
+For the frontend dev page on `:5173` (it opens `/ws` and fetches `GET /passages` from `:8000`), list its origin; with it unset every browser origin is refused on `/ws`:
+
+```
+export OCURATE_ALLOWED_ORIGINS=http://localhost:5173
+```
+
 `GET /health` answers `{"status": "ok"}`.
 
 `POST /sessions` lets the web server create a Session. It needs `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally). See [docs/t9-sessions.md](./docs/t9-sessions.md).
@@ -64,8 +70,9 @@ All settings are environment variables. Unset or empty values use the default.
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | How long a Session token stays valid |
 | `OCURATE_SESSION_INACTIVITY_SECONDS` | `30` | Seconds without frames before a Session is abandoned |
 | `OCURATE_MAX_MESSAGE_BYTES` | `65536` | Largest accepted WebSocket message |
-| `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session |
-| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Sessions allowed to wait for their token at once; `POST /sessions` answers 503 past it |
+| `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session. Frames are paced with a two-second burst allowance, so a browser at 30 fps never trips it; a sustained higher rate ends the Session with `4429` |
+| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Sessions allowed to wait for their token at once (`POST /sessions` answers 503 past it), and also the most live WebSockets (an extra one is closed with `1013`) |
+| `OCURATE_ALLOWED_ORIGINS` | empty | Comma-separated browser origins (e.g. `http://localhost:5173`) allowed to open `/ws` and to call `GET /passages` (CORS). Empty refuses every browser origin on `/ws` and sends no CORS headers. Clients sending no `Origin` are not checked |
 | `OCURATE_MAX_CALIBRATION_ATTEMPTS` | `3` | Calibration attempts per Session before it is abandoned |
 | `OCURATE_LOG_LEVEL` | `INFO` | Python logging level |
 | `OCURATE_DEV_MODE` | `0` | Local dev only. With no token secret set, a random one is made at startup (tokens then die with the process) |

@@ -9,19 +9,9 @@ import pytest
 from app.config import Settings
 from app.sessions.tokens import (InvalidSignature, SessionGrant, TokenAlreadyUsed, TokenExpired, TokenStore,
                     TooManySessions, UnknownSession, build_token_store)
+from tests.fake_clock import FakeClock
 
 SECRET = "test-token-secret"
-
-
-class FakeClock:
-
-    def __init__(self, now=1000.0):
-
-        self.now = now
-
-    def __call__(self):
-
-        return self.now
 
 
 def make_store(clock=None, ttl=60):
