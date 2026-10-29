@@ -9,7 +9,7 @@ import pytest
 from app.schemas import protocol
 from app.analysis.eye_features import (
     normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE,
-    IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP,
+    IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP, EYE_CENTRE_MAX_OFFSET_HEIGHTS, EYE_CENTRE_MAX_OFFSET_WIDTHS,
 )
 
 
@@ -283,9 +283,6 @@ def test_v2_still_returns_none_for_no_face():
 
 
 # --- a centre that disagrees with the landmarks is not trusted -------------------
-
-from eye_features import EYE_CENTRE_MAX_OFFSET_HEIGHTS, EYE_CENTRE_MAX_OFFSET_WIDTHS
-
 
 def test_v2_centre_far_from_the_iris_across_the_eye_falls_back():
 
