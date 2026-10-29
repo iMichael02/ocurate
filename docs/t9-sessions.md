@@ -41,6 +41,16 @@ Content-Type: application/json
 
 The API key is checked before anything else, so a caller without the key gets 401 even with a bad body, and learns nothing about how the service is configured. The one exception is a body that is not valid JSON at all: FastAPI rejects it with 422 before any check runs.
 
+## How the browser gets its token
+
+The web server creates the Session when the Learner clicks Start, not when the page loads, and gives the token to the browser in the response to an authenticated request:
+
+1. The browser calls the web server (`POST /api/sessions`, authenticated by the Learner's sign-in, protected against cross-site requests).
+2. The web server calls this service's `POST /sessions` with its API key and returns `{session_id, passage_id, token, expires_in}` to the browser.
+3. The browser opens the WebSocket at once and sends the token in `hello`.
+
+The token must not travel in a URL (query string or path). URLs end up in browser history, server and proxy logs and `Referer` headers, and a single-use token is only safe while nobody else has seen it. A response body is not recorded in any of those places. The 60 s lifetime is short because it only has to cover step 2 to step 3. The API key stays on the web server and is never sent to the browser. Use `https://` and `wss://` outside local development. The frontend repo's README describes its side, and has a development stand-in for the web server.
+
 ## Token flow
 
 1. The web server sends `POST /sessions` with its API key. We compare the key with `hmac.compare_digest`, so the time taken does not leak how much of it matched.
