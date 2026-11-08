@@ -1,4 +1,24 @@
 services:
+  api:
+    build: .
+    environment:
+      OCURATE_DATABASE_URL: mysql+pymysql://${MYSQL_USER:?set MYSQL_USER}:${MYSQL_PASSWORD_URLENCODED:?set MYSQL_PASSWORD_URLENCODED}@mysql:3306/ocurate?charset=utf8mb4
+      OCURATE_API_KEY: ${OCURATE_API_KEY:-}
+      OCURATE_TOKEN_SECRET: ${OCURATE_TOKEN_SECRET:-}
+      OCURATE_CALLBACK_URL: ${OCURATE_CALLBACK_URL:-}
+      OCURATE_CALLBACK_SECRET: ${OCURATE_CALLBACK_SECRET:-}
+      OCURATE_ALLOWED_ORIGINS: ${OCURATE_ALLOWED_ORIGINS:-}
+      OCURATE_DEV_MODE: ${OCURATE_DEV_MODE:-0}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      retries: 5
+
   mysql:
     image: mysql:8.4.3
     # MYSQL_USER / MYSQL_PASSWORD only take effect when the mysql-data volume is
