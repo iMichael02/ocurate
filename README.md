@@ -32,6 +32,17 @@ Stop the container with `docker compose down`; the data stays in the volume. `do
 
 The tests mock the database connection and need no MySQL server. The `/passages` endpoints answer 503 when the database is unreachable or the table is missing (run the command above), and an invalid stored row is left out of the listing and answers 500 on its own id.
 
+## Docker
+
+`compose.yaml` also builds and runs the service (`api`, port 8000) next to MySQL. Set `MYSQL_PASSWORD_URLENCODED` to the percent-encoded form of `MYSQL_PASSWORD`, plus `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally), then:
+
+```
+docker compose up -d --build --wait
+docker compose run --rm api python -m app.passages.passage_store
+```
+
+The container runs a single uvicorn process, as pending tokens live in memory. The image holds only `app/`; tests run from the venv.
+
 ## Run
 
 ```
