@@ -80,5 +80,5 @@ async def session_socket(websocket: WebSocket):
         session.socket_closed()
 
         if session.outcome is not None:
-            # T10 hooks the signed result callback to the web server in here.
+            # Only queues the result callback: no network I/O on this socket.
             app.state.on_session_finished(session.outcome)

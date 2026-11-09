@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from callback import CallbackSender
 from config import load_settings
 from log_setup import configure_logging, log_event
 from passage import UnknownPassageError
@@ -26,11 +27,17 @@ def create_app(settings=None):
     # The engine connects lazily, so the app starts without a reachable database.
     # pool_pre_ping replaces connections MySQL has closed after wait_timeout.
     engine = create_engine(settings.database_url, pool_pre_ping=True) if settings.database_url else None
+    # Validates the callback settings, so a bad URL or secret stops the app here.
+    callbacks = CallbackSender(settings)
 
     @asynccontextmanager
     async def lifespan(app):
 
+        await callbacks.start()
+
         yield
+
+        await callbacks.stop()
 
         if engine is not None:
             engine.dispose()
@@ -39,8 +46,9 @@ def create_app(settings=None):
     app.state.settings = settings
     app.state.engine = engine
     app.state.tokens = build_token_store(settings)
-    # Called with each finished Session's Outcome; the signed result callback replaces it.
-    app.state.on_session_finished = lambda outcome: None
+    app.state.callbacks = callbacks
+    # Called with each finished Session's Outcome; queues completed ones for the web server.
+    app.state.on_session_finished = callbacks.submit
 
     def require_engine():
 
