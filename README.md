@@ -16,7 +16,7 @@ Passages are read from MySQL. `compose.yaml` runs one locally, with an `ocurate`
 ```
 export MYSQL_USER=ocurate
 export MYSQL_PASSWORD=choose-a-password
-docker compose up -d --wait
+docker compose up -d --wait mysql
 ```
 
 If port 3306 is already taken, set `MYSQL_PORT` to another host port and use that port in the URL below.
@@ -34,7 +34,7 @@ The tests mock the database connection and need no MySQL server. The `/passages`
 
 ## Docker
 
-`compose.yaml` also builds and runs the service (`api`, port 8000) next to MySQL. Set `MYSQL_PASSWORD_URLENCODED` to the percent-encoded form of `MYSQL_PASSWORD`, plus `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally), then:
+`compose.yaml` also builds and runs the service (`api`, host port `API_PORT`, default 8000) next to MySQL. It passes through only the `OCURATE_API_KEY`, `OCURATE_TOKEN_SECRET`, `OCURATE_CALLBACK_*`, `OCURATE_ALLOWED_ORIGINS` and `OCURATE_DEV_MODE` settings; add others under `environment:` in `compose.yaml` to change them. Set `MYSQL_PASSWORD_URLENCODED` to the percent-encoded form of `MYSQL_PASSWORD`, plus `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally), then:
 
 ```
 docker compose up -d --build --wait
