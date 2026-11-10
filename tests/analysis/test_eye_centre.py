@@ -65,6 +65,23 @@ def test_a_clear_disc_is_confident():
     assert locate_eye_centre(_eye(20, 10))[2] >= 0.5
 
 
+@pytest.mark.parametrize("radius", [4, 5, 6, 7, 8])
+def test_a_realistic_iris_is_confident(radius):
+    """An iris is 5-8 px in the crop; its own rim must not count as a rival peak."""
+
+    x, y, confidence = locate_eye_centre(_eye(20, 10, radius=radius))
+
+    assert confidence >= 0.5
+    assert (x * CROP_WIDTH, y * CROP_HEIGHT) == pytest.approx((20.5, 10.5), abs=1.0)
+
+
+def test_two_equal_dark_blobs_are_not_confident():
+
+    both = np.minimum(_eye(12, 10, radius=5), _eye(28, 10, radius=5))
+
+    assert locate_eye_centre(both)[2] < 0.5
+
+
 def test_a_flat_crop_has_no_confidence():
 
     flat = np.full((CROP_HEIGHT, CROP_WIDTH), 120.0)

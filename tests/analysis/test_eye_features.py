@@ -9,7 +9,7 @@ import pytest
 from app.schemas import protocol
 from app.analysis.eye_features import (
     normalize_iris, eye_aspect_ratio, extract_features, FEATURE_SIZE,
-    IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP,
+    IRIS_IDS, EYE_CORNER_IDS, NOSE_TIP, EYE_CENTRE_MAX_OFFSET_HEIGHTS, EYE_CENTRE_MAX_OFFSET_WIDTHS,
 )
 
 
@@ -280,3 +280,51 @@ def test_v2_still_returns_none_for_no_face():
 
     assert extract_features(_frame(nose={"x": 1.2, "y": 0.5}), use_eye_centres=True) is None
     assert extract_features(None, use_eye_centres=True) is None
+
+
+# --- a centre that disagrees with the landmarks is not trusted -------------------
+
+def test_v2_centre_far_from_the_iris_across_the_eye_falls_back():
+
+    # The test eye spans x 0.3-0.4 with the iris mid-eye (0.35). A confident
+    # centre at 0.39 is 0.4 eye widths away, e.g. locked on a lens reflection.
+    features = extract_features(_frame(eye_centres=_centres(left=(0.39, 0.40))), use_eye_centres=True)
+
+    np.testing.assert_array_equal(features[20:22], features[0:2])
+
+
+def test_v2_centre_far_from_the_iris_up_or_down_falls_back():
+
+    # The eye is 0.1 high (y 0.35-0.45). 0.46 is 0.6 eye heights below the iris.
+    features = extract_features(_frame(eye_centres=_centres(left=(0.35, 0.46))), use_eye_centres=True)
+
+    np.testing.assert_array_equal(features[20:22], features[0:2])
+
+
+def test_v2_centre_just_inside_the_offset_limits_is_used():
+
+    across = 0.35 + 0.1 * (EYE_CENTRE_MAX_OFFSET_WIDTHS - 0.01)
+    down = 0.40 + 0.1 * (EYE_CENTRE_MAX_OFFSET_HEIGHTS - 0.01)
+
+    features = extract_features(_frame(eye_centres=_centres(left=(across, down))), use_eye_centres=True)
+
+    assert not np.array_equal(features[20:22], features[0:2])
+
+
+def test_v2_offset_gate_applies_per_eye():
+
+    # Left eye is on the iris landmarks' side of the limit, right eye is far off.
+    features = extract_features(_frame(eye_centres=_centres(left=(0.34, 0.41), right=(0.69, 0.40))),
+                                use_eye_centres=True)
+
+    assert features[20:22] == pytest.approx([0.4, 0.6], abs=1e-5)
+    np.testing.assert_array_equal(features[22:24], features[2:4])
+
+
+def test_v2_uses_a_centre_with_confidence_0_35_but_not_0_25():
+
+    used = extract_features(_frame(eye_centres=_centres(confidence=0.35)), use_eye_centres=True)
+    ignored = extract_features(_frame(eye_centres=_centres(confidence=0.25)), use_eye_centres=True)
+
+    assert used[20:24] == pytest.approx([0.4, 0.6, 0.6, 0.4], abs=1e-5)
+    np.testing.assert_array_equal(ignored[20:24], ignored[0:4])

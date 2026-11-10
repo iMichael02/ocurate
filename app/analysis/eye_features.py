@@ -26,7 +26,16 @@ FEATURE_SIZE_V2 = 24
 
 # Below this the browser's eye centre is not trusted and the landmark mean
 # stands in for it. Tunable here without a frontend release.
-EYE_CENTRE_MIN_CONFIDENCE = 0.5
+EYE_CENTRE_MIN_CONFIDENCE = 0.3
+
+# A centre that lies further than this from the mean of the eye's iris
+# landmarks, measured across the eye in eye widths and up/down in eye heights
+# (the same units as the normalized features), is not trusted either: it has
+# locked onto something else (a lens reflection, a lash line), and the
+# confidence score cannot tell. The landmark mean stands in for it. The limits
+# are estimates from webcam tests, tunable here without a frontend release.
+EYE_CENTRE_MAX_OFFSET_WIDTHS = 0.2
+EYE_CENTRE_MAX_OFFSET_HEIGHTS = 0.5
 
 
 def landmark_xy(p):
@@ -150,8 +159,9 @@ def _pose_matrix(matrix):
 def _eye_centre_features(frame, iris, corners):
     """The 4 values protocol version 2 appends: per eye, the browser's eye
     centre normalized against that eye's corners. An eye whose centre is
-    missing, below EYE_CENTRE_MIN_CONFIDENCE or off the image uses the mean of
-    its iris landmarks instead, so the vector keeps its size."""
+    missing, below EYE_CENTRE_MIN_CONFIDENCE, off the image or further from
+    the iris landmarks than EYE_CENTRE_MAX_OFFSET_* uses the mean of its iris
+    landmarks instead, so the vector keeps its size."""
 
     centres = getattr(frame, "eye_centres", None)
 
@@ -161,16 +171,22 @@ def _eye_centre_features(frame, iris, corners):
         eye_iris = iris[eye * 4:eye * 4 + 4]
         eye_corners = corners[eye * 4:eye * 4 + 4]
 
-        position = iris_center(eye_iris)
+        left, right, top, bottom = (landmark_xy(p) for p in eye_corners)
+
+        landmark_mean = normalize_iris(iris_center(eye_iris), left, right, top, bottom)
+        value = landmark_mean
 
         if centres is not None and len(centres) == 2:
             centre = centres[eye]
             if (centre.confidence >= EYE_CENTRE_MIN_CONFIDENCE
                     and _usable_landmarks([centre], 1)):
-                position = landmark_xy(centre)
+                candidate = normalize_iris(landmark_xy(centre), left, right, top, bottom)
+                offset = np.abs(candidate - landmark_mean)
+                if (offset[0] <= EYE_CENTRE_MAX_OFFSET_WIDTHS
+                        and offset[1] <= EYE_CENTRE_MAX_OFFSET_HEIGHTS):
+                    value = candidate
 
-        left, right, top, bottom = (landmark_xy(p) for p in eye_corners)
-        values.append(normalize_iris(position, left, right, top, bottom))
+        values.append(value)
 
     return np.concatenate(values)
 
