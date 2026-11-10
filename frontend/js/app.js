@@ -104,20 +104,26 @@ async function startSession() {
   // };
 
 
-  conn.onClose = (code) => {
-  if (state.phase !== "done" && state.phase !== "ended") {
-    const messages = {
-      4400: "A protocol error occurred. Please start a new session.",
-      4401: "Your session link is invalid. Please start a new session.",
-      4408: "The session timed out. Please start a new session.",
-      4409: "This service version is not supported. Please start a new session.",
-      1011: "The service could not load the passage. Please start a new session.",
-      1013: "The service is currently full. Please start a new session.",
-    };
+//   conn.onClose = (code) => {
+//   if (state.phase !== "done" && state.phase !== "ended") {
+//     const messages = {
+//       4400: "A protocol error occurred. Please start a new session.",
+//       4401: "Your session link is invalid. Please start a new session.",
+//       4408: "The session timed out. Please start a new session.",
+//       4409: "This service version is not supported. Please start a new session.",
+//       1011: "The service could not load the passage. Please start a new session.",
+//       1013: "The service is currently full. Please start a new session.",
+//     };
 
-    endSession(messages[code] || "Connection to the service was lost.");
+//     endSession(messages[code] || "Connection to the service was lost.");
+//   }
+// };
+conn.onClose = (code) => {
+  if (state.phase !== "done" && state.phase !== "ended") {
+    endSession(closeMessage(code));
   }
 };
+  
   try {
     await conn.ready;
   } catch (err) {
