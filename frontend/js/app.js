@@ -4,6 +4,7 @@
 //   → calibration_done → frames without target → reading_started → fixation… → completed
 
 import { CONFIG } from "./config.js";
+import { closeMessage } from "./close-message.mjs";
 import { DEFAULT_PASSAGE, loadPassage, textToBraille } from "./passage.js";
 import { startCamera, loadLandmarker, detect, syntheticFrame } from "./face-tracker.js";
 import { openConnection } from "./connection.js";
@@ -96,11 +97,27 @@ async function startSession() {
   const conn = openConnection({ token: params.get("token"), passage: state.passage });
   state.conn = conn;
   conn.onMessage = handleMessage;
+  // conn.onClose = (code) => {
+  //   if (state.phase !== "done" && state.phase !== "ended") {
+  //     endSession(code === 4401 ? "Your session link expired. Start a new session." : "Connection to the service was lost.");
+  //   }
+  // };
+
+
   conn.onClose = (code) => {
-    if (state.phase !== "done" && state.phase !== "ended") {
-      endSession(code === 4401 ? "Your session link expired. Start a new session." : "Connection to the service was lost.");
-    }
-  };
+  if (state.phase !== "done" && state.phase !== "ended") {
+    const messages = {
+      4400: "A protocol error occurred. Please start a new session.",
+      4401: "Your session link is invalid. Please start a new session.",
+      4408: "The session timed out. Please start a new session.",
+      4409: "This service version is not supported. Please start a new session.",
+      1011: "The service could not load the passage. Please start a new session.",
+      1013: "The service is currently full. Please start a new session.",
+    };
+
+    endSession(messages[code] || "Connection to the service was lost.");
+  }
+};
   try {
     await conn.ready;
   } catch (err) {
