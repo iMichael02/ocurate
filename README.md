@@ -88,6 +88,18 @@ The tests mock the database connection and need no MySQL server. The `/passages`
 venv/bin/pytest
 ```
 
+## Git hooks
+
+[pre-commit](https://pre-commit.com) runs `ruff` and the unit tests before each commit, and rejects commit messages with a line
+over 120 characters. Install it once, with the venv active:
+
+```
+venv/bin/pip install pre-commit
+venv/bin/pre-commit install
+```
+
+Run the checks by hand with `pre-commit run --all-files`. CI runs the same tests on every push.
+
 ## Configuration
 
 All settings are environment variables. Unset or empty values use the default.

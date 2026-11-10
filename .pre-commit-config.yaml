@@ -1,0 +1,25 @@
+# Install once with: pre-commit install
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: unit tests
+        entry: python -m pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: commit-message-length
+        name: commit message lines at most 120 characters
+        # Flags any line over 120 characters; "#" comment lines are ignored.
+        entry: '^[^#\n].{120,}$'
+        language: pygrep
+        stages: [commit-msg]

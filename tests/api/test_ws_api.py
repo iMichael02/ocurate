@@ -13,7 +13,7 @@ from app.config import Settings
 from app.passages.passage import Passage, UnknownPassageError
 from app.schemas import protocol
 from app.sessions.tokens import build_token_store
-from tests.sessions.test_session_manager import CELL_CENTRES, frame, hello, quadrant_layout
+from tests.sessions.test_session_manager import frame, hello, quadrant_layout
 from tests.fake_clock import FakeClock
 
 DATABASE_URL = "mysql+pymysql://user:password@localhost/ocurate"

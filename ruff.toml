@@ -1,0 +1,8 @@
+# Correctness rules only (pyflakes plus the E4/E7/E9 syntax and statement checks).
+# Pinned explicitly so a ruff upgrade does not change what is enforced.
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Some tests import next to the section that uses them.
+"tests/**" = ["E402"]
