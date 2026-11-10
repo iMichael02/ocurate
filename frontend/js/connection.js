@@ -27,9 +27,16 @@ class WsConnection {
     this.ws.onmessage = (e) => this.onMessage(JSON.parse(e.data));
     this.ws.onclose = (e) => this.onClose(e.code);
   }
-  send(msg) {
-    if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+  // send(msg) {
+  //   if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+  // }
+send(msg) {
+  if (this.ws.readyState !== WebSocket.OPEN) {
+    throw new Error("Connection is not open");
   }
+  this.ws.send(JSON.stringify(msg));
+}
+  
   close() {
     this.ws.close(1000);
   }
