@@ -72,6 +72,15 @@ function hideError() {
   $("start-error").classList.add("hidden");
 }
 
+function safeSend(msg) {
+  try {
+    state.conn.send(msg);
+    return true;
+  } catch (err) {
+    endSession("Connection to the service was lost.");
+    return false;
+  }
+}
 // ======================= Session =======================
 
 async function startSession() {
