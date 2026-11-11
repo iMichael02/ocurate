@@ -35,12 +35,13 @@ def create_app(settings=None):
 
         await callbacks.start()
 
-        yield
+        try:
+            yield
+        finally:
+            await callbacks.stop()
 
-        await callbacks.stop()
-
-        if engine is not None:
-            engine.dispose()
+            if engine is not None:
+                engine.dispose()
 
     app = FastAPI(title="Ocurate gaze-analysis service", lifespan=lifespan)
     app.state.settings = settings

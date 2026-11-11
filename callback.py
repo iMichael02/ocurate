@@ -158,6 +158,13 @@ class CallbackSender:
         self._pending = deque()
         self._running = False
         self._stopped = False
+        self.dropped = 0
+
+    def _drop(self, session_id, level, reason, **fields):
+        """Logs a lost result and counts it (`dropped`)."""
+
+        self.dropped += 1
+        log_event(logger, "callback_dropped", level, session_id=session_id, reason=reason, **fields)
 
     @property
     def enabled(self):
@@ -191,8 +198,7 @@ class CallbackSender:
 
         while self._pending:
             delivery = self._pending.popleft()
-            log_event(logger, "callback_dropped", logging.WARNING, session_id=delivery.session_id,
-                      reason="shutdown")
+            self._drop(delivery.session_id, logging.WARNING, "shutdown")
             if delivery.task is not None:
                 delivery.task.cancel()
                 tasks.append(delivery.task)
@@ -212,20 +218,18 @@ class CallbackSender:
 
         try:
             body = build_body(outcome)
-        except ValueError as error:
-            log_event(logger, "callback_dropped", logging.ERROR, session_id=outcome.session_id,
-                      reason="invalid_result", error=type(error).__name__)
+        except (ValueError, TypeError) as error:
+            # Never let a malformed Outcome break the WebSocket teardown that calls this.
+            self._drop(outcome.session_id, logging.ERROR, "invalid_result", error=type(error).__name__)
             return
 
         if self._stopped:
-            log_event(logger, "callback_dropped", logging.WARNING, session_id=outcome.session_id,
-                      reason="shutdown")
+            self._drop(outcome.session_id, logging.WARNING, "shutdown")
             return
 
         if len(self._pending) >= MAX_PENDING:
             oldest = self._pending.popleft()
-            log_event(logger, "callback_dropped", logging.WARNING, session_id=oldest.session_id,
-                      reason="queue_full")
+            self._drop(oldest.session_id, logging.WARNING, "queue_full")
             if oldest.task is not None:
                 oldest.task.cancel()
 
@@ -248,8 +252,7 @@ class CallbackSender:
             pass  # already dropped
 
         if not task.cancelled() and task.exception() is not None:
-            log_event(logger, "callback_dropped", logging.ERROR, session_id=delivery.session_id,
-                      reason="internal_error", error=type(task.exception()).__name__)
+            self._drop(delivery.session_id, logging.ERROR, "internal_error", error=type(task.exception()).__name__)
 
     async def _deliver(self, delivery):
 
@@ -266,8 +269,10 @@ class CallbackSender:
                 return
 
             if not is_retryable(status):
+                # Redirects are never followed; a 3xx usually means a wrong URL (e.g. http instead of https).
+                hint = {"hint": "redirects_not_followed"} if status is not None and 300 <= status < 400 else {}
                 log_event(logger, "callback_rejected", logging.WARNING, session_id=delivery.session_id,
-                          attempt=attempt, status=status)
+                          attempt=attempt, status=status, **hint)
                 return
 
             # Jitter only shortens the wait, so no delay passes MAX_DELAY_SECONDS.
@@ -275,8 +280,8 @@ class CallbackSender:
 
             # The next attempt, timeout included, must end inside the window.
             if self._monotonic() + wait + REQUEST_TIMEOUT_SECONDS - started > RETRY_WINDOW_SECONDS:
-                log_event(logger, "callback_dropped", logging.WARNING, session_id=delivery.session_id,
-                          attempt=attempt, status=status, error=error, reason="retry_window_exceeded")
+                self._drop(delivery.session_id, logging.WARNING, "retry_window_exceeded",
+                           attempt=attempt, status=status, error=error)
                 return
 
             log_event(logger, "callback_retry", logging.WARNING, session_id=delivery.session_id,

@@ -50,6 +50,7 @@ Body:
 - `webhook-id` is the `session_id`. It is the same on every retry, so the web server uses it as the idempotency key.
 - `webhook-timestamp` is the time of this attempt in unix seconds.
 - `webhook-signature` is `v1,` followed by the base64 of `HMAC-SHA256(key, webhook-id + "." + webhook-timestamp + "." + raw_body)`, where `raw_body` is the exact bytes sent. (The specification allows several space-separated signatures, for secret rotation; this service sends one.)
+- Redirects are not followed: a 3xx answer is a permanent rejection (logged as `callback_rejected` with `hint=redirects_not_followed`), so configure the final URL. Every lost result is logged as `callback_dropped` and counted in `CallbackSender.dropped`.
 - `OCURATE_CALLBACK_SECRET` has the form `whsec_` followed by base64 of at least 24 random bytes (`python -c "import base64, secrets; print('whsec_' + base64.b64encode(secrets.token_bytes(32)).decode())"`). The HMAC key is the decoded bytes. The web server is configured with the same string.
 
 The web server should use a Standard Webhooks library to verify, or do the same by hand:

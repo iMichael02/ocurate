@@ -217,7 +217,8 @@ def test_gives_up_after_fifteen_minutes(caplog):
     assert sum(clock.sleeps) + 60 + 5 > 15 * 60
     assert len(requests) == len(clock.sleeps) + 1
     assert len(requests) == 20
-    assert caplog.messages[-1].startswith("callback_dropped session_id=Xq3n0d5bWm1Kz7yQ2r8T4A attempt=20 status=503")
+    assert caplog.messages[-1].startswith(
+        "callback_dropped session_id=Xq3n0d5bWm1Kz7yQ2r8T4A reason=retry_window_exceeded attempt=20 status=503")
 
 
 def test_retry_window_ignores_wall_clock_jumps():
@@ -570,3 +571,52 @@ def test_logs_hold_no_secret_signature_or_body(caplog):
     assert "108.0" not in text
     assert '"sequence"' not in text
     assert "passage_id" not in text
+
+
+# --- review follow-ups --------------------------------------------------------
+
+@pytest.mark.parametrize("result", [None, "not a dict"])
+def test_malformed_outcome_is_dropped_without_raising(result, caplog):
+
+    sender = CallbackSender(Settings(callback_url=URL, callback_secret=SECRET))
+
+    with caplog.at_level(logging.INFO, logger="callback"):
+        sender.submit(Outcome("completed", "bad-1", "default", result=result))
+
+    assert sender.pending == 0
+    assert sender.dropped == 1
+    assert "reason=invalid_result" in caplog.messages[-1]
+
+
+def test_redirect_is_rejected_with_a_hint(caplog):
+
+    with caplog.at_level(logging.INFO, logger="callback"):
+        requests, _ = run([301])
+
+    assert len(requests) == 1
+    assert any("callback_rejected" in m and "hint=redirects_not_followed" in m for m in caplog.messages)
+
+
+def test_dropped_counts_lost_results():
+
+    async def scenario():
+
+        sender = CallbackSender(Settings(callback_url=URL, callback_secret=SECRET),
+                                client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))))
+        await sender.start()
+        await sender.stop()
+        sender.submit(completed())
+        return sender.dropped
+
+    assert asyncio.run(scenario()) == 1
+
+
+def test_lifespan_stops_the_sender_even_if_shutdown_is_interrupted():
+
+    app = create_app(Settings(callback_url=URL, callback_secret=SECRET))
+
+    with pytest.raises(RuntimeError):
+        with TestClient(app):
+            raise RuntimeError("boom")
+
+    assert app.state.callbacks._stopped
