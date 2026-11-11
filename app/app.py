@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.callback import CallbackSender
 from app.config import load_settings
 from app.log_setup import configure_logging, log_event
 from app.passages.passage import UnknownPassageError
@@ -27,22 +28,30 @@ def create_app(settings=None):
     # The engine connects lazily, so the app starts without a reachable database.
     # pool_pre_ping replaces connections MySQL has closed after wait_timeout.
     engine = create_engine(settings.database_url, pool_pre_ping=True) if settings.database_url else None
+    # Validates the callback settings, so a bad URL or secret stops the app here.
+    callbacks = CallbackSender(settings)
 
     @asynccontextmanager
     async def lifespan(app):
 
-        yield
+        await callbacks.start()
 
-        if engine is not None:
-            engine.dispose()
+        try:
+            yield
+        finally:
+            await callbacks.stop()
+
+            if engine is not None:
+                engine.dispose()
 
     app = FastAPI(title="Ocurate gaze-analysis service", lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
     app.state.tokens = build_token_store(settings)
     app.state.live_sessions = 0
-    # Called with each finished Session's Outcome; the signed result callback replaces it.
-    app.state.on_session_finished = lambda outcome: None
+    app.state.callbacks = callbacks
+    # Called with each finished Session's Outcome; queues completed ones for the web server.
+    app.state.on_session_finished = callbacks.submit
 
     if settings.allowed_origins:
         # Read-only: the dev page on :5173 fetches GET /passages from :8000.

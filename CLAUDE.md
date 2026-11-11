@@ -31,6 +31,7 @@ Modules:
 - `app/api/ws_api.py` — the `/ws` WebSocket route: checks the token, loads the Passage, feeds each message to a `Session` and sends its replies; calls `app.state.on_session_finished(outcome)` when a Session ends
 - `app/sessions/session_manager.py` — `Session`: the per-socket state machine (hello → layout → calibration with retries → reading → completed/abandoned). No I/O, so tests drive it with plain messages
 - `app/analysis/cell_layout.py` — `cell_at`: maps a gaze point to a Cell from the browser-reported Layout rectangles
+- `app/callback.py` — the signed result callback (docs/result-callback.md): `build_body` / `sign` (Standard Webhooks), `CallbackSender` queues completed Outcomes from `app.state.on_session_finished` and retries them in the background; started and stopped by the app lifespan, and its config check stops the app on a bad URL or secret
 - `app/sessions/tokens.py` — `TokenStore`: HMAC-signed Session tokens, single use, in-memory pending/used tables with a cap on pending Sessions
 - `app/log_setup.py` — structured logging (`log_event`) that drops landmarks, features, tokens and results
 
@@ -48,13 +49,11 @@ Pure logic, reused by the service:
 
 - `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
 
-Not written yet: the signed result callback (hook: `app.state.on_session_finished`).
-
 Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passages`), a cap on live sockets (`app.state.live_sessions` vs `max_concurrent_sessions`, close `1013`), and `FrameRateLimiter` in `session_manager.py` (close `4429`). The limiter reads the arrival clock, the one exception to "browser timestamps only", because it must hold against a browser that lies about `frame.t`.
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`, in subfolders that mirror the package). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`, in subfolders that mirror the package). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `callback.py` (mocked httpx transport, fake clock), `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 

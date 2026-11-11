@@ -108,8 +108,8 @@ All settings are environment variables. Unset or empty values use the default.
 |---|---|---|
 | `OCURATE_API_KEY` | unset | Key the web server presents when creating Sessions |
 | `OCURATE_TOKEN_SECRET` | unset | Secret used to sign Session tokens |
-| `OCURATE_CALLBACK_URL` | unset | Web-server URL that receives results. Not used yet: the signed result callback is not built |
-| `OCURATE_CALLBACK_SECRET` | unset | Shared secret that signs result callbacks. Not used yet, as above |
+| `OCURATE_CALLBACK_URL` | unset | Web-server URL that receives results; `https://` required (`http://` only for localhost / 127.0.0.1). Unset disables callbacks |
+| `OCURATE_CALLBACK_SECRET` | unset | `whsec_<base64>` secret (at least 24 decoded bytes) that signs result callbacks; required when the URL is set, or the app refuses to start |
 | `OCURATE_DATABASE_URL` | unset | SQLAlchemy URL of the MySQL database holding the Passages; the `/passages` endpoints answer 503 while unset |
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | How long a Session token stays valid |
 | `OCURATE_SESSION_INACTIVITY_SECONDS` | `30` | Seconds without frames before a Session is abandoned |

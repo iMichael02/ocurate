@@ -1,6 +1,6 @@
-# Result callback (T10, proposal)
+# Result callback (T10)
 
-Status: **proposed, not implemented.** This is the contract between this service and the web server for reporting a completed Session. Decided in review: a restart may drop pending results, retries last 15 minutes, and abandoned Sessions are not reported. The signature scheme is the [Standard Webhooks](https://www.standardwebhooks.com) specification, because the web server has no convention of its own and ready-made verification libraries exist for most languages. Context: [ADR 0003](./adr/0003-split-web-interface-and-gaze-service.md) (the browser never relays results) and [architecture-design.md](../architecture-design.md) section 0, steps 5 and 6.
+Status: **implemented** in `callback.py`. This is the contract between this service and the web server for reporting a completed Session. Decided in review: a restart may drop pending results, retries last 15 minutes, and abandoned Sessions are not reported. The signature scheme is the [Standard Webhooks](https://www.standardwebhooks.com) specification, because the web server has no convention of its own and ready-made verification libraries exist for most languages. Context: [ADR 0003](./adr/0003-split-web-interface-and-gaze-service.md) (the browser never relays results) and [architecture-design.md](../architecture-design.md) section 0, steps 5 and 6.
 
 Scope: service → web server only. The browser WebSocket is in [websocket-protocol.md](./websocket-protocol.md) and `POST /sessions` in [t9-sessions.md](./t9-sessions.md).
 
@@ -50,6 +50,7 @@ Body:
 - `webhook-id` is the `session_id`. It is the same on every retry, so the web server uses it as the idempotency key.
 - `webhook-timestamp` is the time of this attempt in unix seconds.
 - `webhook-signature` is `v1,` followed by the base64 of `HMAC-SHA256(key, webhook-id + "." + webhook-timestamp + "." + raw_body)`, where `raw_body` is the exact bytes sent. (The specification allows several space-separated signatures, for secret rotation; this service sends one.)
+- Redirects are not followed: a 3xx answer is a permanent rejection (logged as `callback_rejected` with `hint=redirects_not_followed`), so configure the final URL. Every lost result is logged as `callback_dropped` and counted in `CallbackSender.dropped`.
 - `OCURATE_CALLBACK_SECRET` has the form `whsec_` followed by base64 of at least 24 random bytes (`python -c "import base64, secrets; print('whsec_' + base64.b64encode(secrets.token_bytes(32)).decode())"`). The HMAC key is the decoded bytes. The web server is configured with the same string.
 
 The web server should use a Standard Webhooks library to verify, or do the same by hand:
