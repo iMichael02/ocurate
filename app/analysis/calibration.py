@@ -52,8 +52,10 @@ class CalibrationResult:
 
 class Calibration:
     """Collects tagged frames for one calibration attempt and fits the gaze
-    model from the mean features per target. A frame with features None (no
-    face) counts for nothing."""
+    model on every usable frame, each labelled with its target. (Fitting on
+    one average per target would teach the model clean inputs, and it would
+    then amplify the frame-to-frame jitter of single frames at reading time.)
+    A frame with features None (no face) counts for nothing."""
 
     def __init__(self):
 
@@ -100,8 +102,8 @@ class Calibration:
 
         for index, samples in self._samples.items():
             if samples:
-                X.append(np.mean(samples, axis=0))
-                y.append(CALIBRATION_POINTS[index])
+                X.extend(samples)
+                y.extend([CALIBRATION_POINTS[index]] * len(samples))
             points.append(TargetStatus(index, "ok" if samples else "skipped", len(samples)))
 
         usable = [p.index for p in points if p.state == "ok"]

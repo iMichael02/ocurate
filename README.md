@@ -137,3 +137,26 @@ Unset secrets let the app start for local development. The endpoints that need t
 ## Logging
 
 Structured log lines go through `log_setup.log_event`, which drops landmarks, features, tokens and results. Do not log them any other way.
+
+### When reading shows no progress
+
+Reading starts only when a fixation lands on the first Cell (top left), and until then the service sends nothing, so a stalled Session looks the same whatever the cause. Watch the logs while you read (`docker compose logs -f api`):
+
+- `calibration_judged`: `ok_points` of `points` were usable. A pass needs 12, but a model fitted on 12 is rougher than one fitted on 16.
+- `reading_progress`: every 5 s of browser time while reading, and the same counters are on `session_ended`. Counts and one rounded distance only, no gaze coordinates.
+
+| Field | Meaning |
+|---|---|
+| `frames` | Reading frames the service received. `0` means the browser is not sending any (check the browser console). |
+| `no_face_frames` | Frames with no usable face (landmarks missing or off the image). A high share means lighting, head position or the camera. |
+| `gaze_off_screen_frames` | Frames whose estimated gaze was outside the viewport. A high share means the gaze model is badly off, usually after a poor calibration. |
+| `fixation_frames` | Frames in which the detector saw a steady gaze (it reports one on every frame of a stare). `0` with plenty of `frames` means the gaze never settles (too jittery) or is off screen. |
+| `off_cell_frames` | Of those, frames whose fixation was on no Cell. |
+| `cells_fixated` | How many times the fixated Cell changed. |
+| `cells_fixated_before_start` | The same, before the first Cell was fixated. Above `0` while `reading_started=False` means the gaze settles on other Cells instead of the first one. |
+| `nearest_to_first_cell` | How far (0 to 1 of the viewport) the closest fixation got to Cell (0, 0) before reading started. A Cell is about 0.07 wide and 0.15 high, so a value near `0.2` or more means the estimate is far from where the Learner looks. |
+| `frames_out_of_range` | Frames in which some feature was more than 3 calibration standard deviations from its calibration mean, so the gaze estimate is an extrapolation. Close to `frames` means the Learner no longer looks or sits as they did in calibration. |
+| `max_abs_z` | The largest such distance seen. Around 3 or less is normal; tens or hundreds means a feature that barely moved during calibration has moved. |
+| `mean_max_abs_z` | The average, over frames, of each frame's largest distance. |
+| `worst_feature_group` | Which part of the feature vector most often had the largest distance: `iris`, `eye_openness` or `eye_centre`: the groups the model uses (head pose and face position are left out, see `MODEL_FEATURE_GROUPS`). `None` if no frame went out of range. `eye_centre` here means the browser's eye-centre estimate is jittery or jumping, for example from glasses reflections or poor lighting. |
+| `reading_started` | `True` once the first Cell was fixated. |

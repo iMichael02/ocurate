@@ -44,11 +44,11 @@ def test_all_targets_seen_is_ready_with_per_target_status():
     assert result.model is not None
 
 
-def test_a_target_is_the_mean_of_its_frames():
+def test_frames_that_straddle_each_target_still_recover_the_target():
 
     calibration = Calibration()
 
-    # Frames straddle each position, so only the mean lines up with it.
+    # Frames straddle each position, so the model must still line up with it.
     feed(calibration, range(16), frames_per_point=4, noise=0.05)
 
     model = calibration.finish().model
@@ -57,6 +57,64 @@ def test_a_target_is_the_mean_of_its_frames():
         px, py = model.predict(np.array([[x, y]]))[0]
         assert px == pytest.approx(x, abs=0.05)
         assert py == pytest.approx(y, abs=0.05)
+
+
+def test_the_model_is_fitted_on_every_frame_not_on_one_average_per_target(monkeypatch):
+
+    seen = {}
+
+    def spy(self, X, y):
+        seen["X"], seen["y"] = np.array(X), np.array(y)
+
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
+    calibration = Calibration()
+
+    feed(calibration, range(16), frames_per_point=3)
+    calibration.finish()
+
+    assert seen["X"].shape == (48, 2)
+    assert seen["y"].shape == (48, 2)
+    # Each frame is labelled with its own target.
+    assert [tuple(row) for row in seen["y"][:3]] == [CALIBRATION_POINTS[0]] * 3
+
+
+def test_a_target_with_fewer_usable_frames_contributes_fewer_rows(monkeypatch):
+
+    seen = {}
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", lambda self, X, y: seen.update(rows=len(X)))
+    calibration = Calibration()
+
+    feed(calibration, range(15), frames_per_point=4)
+    feed(calibration, [15], frames_per_point=1)
+    calibration.finish()
+
+    assert seen["rows"] == 15 * 4 + 1
+
+
+def test_a_jittery_feature_does_not_wreck_predictions_on_single_frames():
+    """The reason for fitting on frames: a feature with big per-frame jitter but a tiny
+    spread between targets must not be amplified when the model sees one noisy frame."""
+
+    rng = np.random.default_rng(0)
+    calibration = Calibration()
+
+    def features(x, y):
+        clean = [x, y]                                              # tracks the target
+        jittery = rng.normal(0.0, 0.05, 4) + 0.01 * np.array([x, y, x, y])   # mostly noise
+        return np.concatenate([clean + rng.normal(0, 0.01, 2), jittery])
+
+    for x, y in CALIBRATION_POINTS:
+        for _ in range(20):
+            calibration.add_frame((x, y), features(x, y))
+
+    model = calibration.finish().model
+
+    errors = []
+    for x, y in CALIBRATION_POINTS:
+        frames = np.array([features(x, y) for _ in range(30)])
+        errors.append(np.abs(model.predict(frames) - [x, y]).mean())
+
+    assert np.mean(errors) < 0.03
 
 
 def test_frames_without_a_face_do_not_count():
