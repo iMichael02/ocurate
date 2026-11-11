@@ -1,8 +1,22 @@
+x-database-url: &database-url mysql+pymysql://${MYSQL_USER:?set MYSQL_USER}:${MYSQL_PASSWORD_URLENCODED:?set MYSQL_PASSWORD_URLENCODED}@mysql:3306/ocurate?charset=utf8mb4
+
 services:
+  # One-shot: creates the passages table and seeds the Passages, then exits.
+  # The api starts only after it finished, so a fresh `docker compose up` is ready to use.
+  migrate:
+    build: .
+    command: ["python", "-m", "app.passages.passage_store"]
+    environment:
+      OCURATE_DATABASE_URL: *database-url
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: .
     environment:
-      OCURATE_DATABASE_URL: mysql+pymysql://${MYSQL_USER:?set MYSQL_USER}:${MYSQL_PASSWORD_URLENCODED:?set MYSQL_PASSWORD_URLENCODED}@mysql:3306/ocurate?charset=utf8mb4
+      OCURATE_DATABASE_URL: *database-url
       OCURATE_API_KEY: ${OCURATE_API_KEY:-}
       OCURATE_TOKEN_SECRET: ${OCURATE_TOKEN_SECRET:-}
       OCURATE_CALLBACK_URL: ${OCURATE_CALLBACK_URL:-}
@@ -14,6 +28,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s

@@ -2,10 +2,17 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
-from app.passages.passage import UnknownPassageError, build_default_passage
-from app.passages.passage_store import StoredPassageError, get_passage, init_db, list_passages
+from app.passages.passage import UnknownPassageError, build_default_passage, build_short_passage
+from app.passages.passage_store import (
+    SEED_PASSAGES,
+    StoredPassageError,
+    get_passage,
+    init_db,
+    list_passages,
+    wait_and_init_db,
+)
 
 
 def mock_engine(*results):
@@ -92,34 +99,81 @@ def test_list_passages_skips_an_invalid_row_instead_of_failing():
     assert [item.id for item in list_passages(engine)] == ["good"]
 
 
-def test_init_db_updates_an_existing_default_row():
+def test_init_db_creates_the_table_then_updates_every_seed_row():
 
-    engine, connection = mock_engine(MagicMock(), MagicMock(rowcount=1))
+    engine, connection = mock_engine(MagicMock(), MagicMock(rowcount=1), MagicMock(rowcount=1))
 
     init_db(engine)
 
     statements = [sql_of(call) for call in connection.execute.call_args_list]
     assert "CREATE TABLE IF NOT EXISTS passages" in statements[0]
-    assert statements[1].lstrip().startswith("UPDATE passages")
-    assert len(statements) == 2
-    assert connection.execute.call_args.args[1] == {
-        "id": "default",
-        "text_lines": "\n".join(build_default_passage().lines),
+    assert [s.lstrip().split()[0] for s in statements[1:]] == ["UPDATE", "UPDATE"]
+    assert len(statements) == 3
+
+    updated = {call.args[1]["id"]: call.args[1]["text_lines"] for call in connection.execute.call_args_list[1:]}
+    assert updated == {
+        "default": "\n".join(build_default_passage().lines),
+        "short": "i can read this",
     }
 
 
-def test_init_db_inserts_the_default_row_when_missing():
+def test_init_db_inserts_the_seed_rows_that_are_missing():
 
-    engine, connection = mock_engine(MagicMock(), MagicMock(rowcount=0), MagicMock())
+    engine, connection = mock_engine(
+        MagicMock(), MagicMock(rowcount=0), MagicMock(), MagicMock(rowcount=0), MagicMock()
+    )
 
     init_db(engine)
 
-    assert sql_of(connection.execute.call_args).lstrip().startswith("INSERT INTO passages")
+    statements = [sql_of(call).lstrip().split()[0] for call in connection.execute.call_args_list]
+    assert statements == ["CREATE", "UPDATE", "INSERT", "UPDATE", "INSERT"]
 
 
 def test_init_db_tolerates_a_concurrent_insert():
 
     duplicate = IntegrityError("INSERT", {}, Exception("duplicate key"))
-    engine, _ = mock_engine(MagicMock(), MagicMock(rowcount=0), duplicate)
+    engine, connection = mock_engine(
+        MagicMock(), MagicMock(rowcount=0), duplicate, MagicMock(rowcount=1)
+    )
 
     init_db(engine)
+
+    # The second seed row is still handled after the first insert lost the race.
+    assert len(connection.execute.call_args_list) == 4
+
+
+def test_every_seed_is_a_valid_passage():
+
+    for passage_id, build in SEED_PASSAGES.items():
+        assert build().num_rows >= 1, passage_id
+
+    assert set(SEED_PASSAGES) == {"default", "short"}
+
+
+def test_the_short_seed_is_one_sentence_on_one_row():
+
+    passage = build_short_passage()
+
+    assert passage.lines == ["i can read this"]
+    assert passage.num_rows == 1
+
+
+def test_wait_and_init_db_retries_until_the_database_answers():
+
+    not_ready = OperationalError("CREATE", {}, Exception("connection refused"))
+    engine, connection = mock_engine(not_ready, not_ready, MagicMock(), MagicMock(rowcount=1), MagicMock(rowcount=1))
+    sleeps = []
+
+    wait_and_init_db(engine, attempts=5, delay_seconds=2, sleep=sleeps.append)
+
+    assert sleeps == [2, 2]
+    assert len(connection.execute.call_args_list) == 5
+
+
+def test_wait_and_init_db_gives_up_after_the_last_attempt():
+
+    not_ready = OperationalError("CREATE", {}, Exception("connection refused"))
+    engine, _ = mock_engine(not_ready, not_ready, not_ready)
+
+    with pytest.raises(OperationalError):
+        wait_and_init_db(engine, attempts=3, delay_seconds=0, sleep=lambda _: None)
