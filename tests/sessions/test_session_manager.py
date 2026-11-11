@@ -1,9 +1,11 @@
 import json
+import logging
 
 import numpy as np
 import pytest
 
 from app.analysis.calibration import CALIBRATION_POINTS, Calibration, CalibrationResult, TargetStatus
+from app.analysis.eye_features import FEATURE_SIZE_V2, model_columns
 from app.config import Settings
 from app.passages.passage import Passage
 from app.schemas import protocol
@@ -752,3 +754,260 @@ def test_a_frame_over_the_limit_abandons_the_session():
     assert replies[2].messages[1].reason == "rate_limited"
     assert replies[2].close_code == protocol.CLOSE_RATE_LIMITED
     assert session.outcome.reason == "rate_limited"
+
+
+# --- diagnostics ----------------------------------------------------------------
+
+class ListHandler(logging.Handler):
+
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+@pytest.fixture
+def session_log():
+    """The records the Session logger emits during a test. It listens on that logger directly, because
+    other tests change its level and leave handlers on it, which caplog would pick up."""
+
+    logger = logging.getLogger("app.sessions.session_manager")
+    handler = ListHandler()
+    level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    yield handler.records
+
+    logger.removeHandler(handler)
+    logger.setLevel(level)
+
+
+def events(session_log, name):
+    """Messages of the structured log lines called `name`, as dicts of strings."""
+
+    found = []
+
+    for record in session_log:
+        message = record.getMessage()
+        if message.split(" ")[0] == name:
+            found.append(dict(part.split("=", 1) for part in message.split(" ")[1:]))
+
+    return found
+
+
+def test_calibration_judging_is_logged_with_the_number_of_usable_points(session_log):
+
+    started_session = started()
+
+    calibrate(started_session)
+
+    [judged] = events(session_log, "calibration_judged")
+    assert judged["outcome"] == "ready"
+    assert judged["attempt"] == "1"
+    assert judged["ok_points"] == "16"
+
+
+def test_a_stalled_reading_session_reports_where_it_is_stuck(session_log):
+
+    session = reading_session()
+
+    # Looks steadily at a Cell that is not the first one, for longer than one report interval.
+    read(session, [CELL_CENTRES[(1, 0)]], 100000.0, frames_per_cell=200)
+    session.receive(dump({"type": "quit"}))
+
+    [progress] = events(session_log, "reading_progress")
+    assert progress["reading_started"] == "False"
+    assert int(progress["fixation_frames"]) > 0
+    assert progress["cells_fixated_before_start"] == "1"
+    assert progress["nearest_to_first_cell"] == "0.25"
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["reason"] == "quit"
+    assert ended["frames"] == "200"
+    assert ended["reading_started"] == "False"
+
+
+def test_reading_progress_is_reported_once_per_interval_not_per_frame(session_log):
+
+    session = reading_session()
+
+    read(session, [CELL_CENTRES[(1, 0)]], 100000.0, frames_per_cell=100)   # about 3.3 s
+
+    assert events(session_log, "reading_progress") == []
+
+
+def test_a_gaze_off_screen_and_missing_faces_are_counted(session_log):
+
+    session = reading_session()
+
+    read(session, [(1.2, 0.5)], 100000.0, frames_per_cell=10)
+    message = frame_dict(101000.0)
+    message["iris"][0] = {"x": 1.4, "y": 0.4}
+    message["nose"] = {"x": 1.4, "y": 0.4}
+    session.receive(dump(message))
+    session.receive(dump({"type": "quit"}))
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["gaze_off_screen_frames"] == "10"
+    assert ended["no_face_frames"] == "1"
+    assert ended["frames"] == "11"
+
+
+def test_a_completed_session_reports_that_reading_started(session_log):
+
+    session = reading_session()
+
+    read(session, [CELL_CENTRES[c] for c in [(0, 0), (0, 1), (1, 0), (1, 1)]], 100000.0)
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["outcome"] == "completed"
+    assert ended["reading_started"] == "True"
+    assert ended["cells_fixated"] == "4"
+    assert events(session_log, "reading_progress") == []
+
+
+def test_a_session_that_never_reached_reading_logs_no_reading_counters(session_log):
+
+    session = started()
+
+    session.receive(dump({"type": "quit"}))
+
+    [ended] = events(session_log, "session_ended")
+    assert "frames" not in ended
+
+
+def test_diagnostics_never_log_gaze_coordinates_or_features(session_log):
+
+    session = reading_session()
+
+    read(session, [CELL_CENTRES[(1, 0)]], 100000.0, frames_per_cell=200)
+    session.receive(dump({"type": "quit"}))
+
+    logged = " ".join(record.getMessage() for record in session_log)
+    for forbidden in ("gaze=", "position", "landmarks", "features", "iris", "matrix", "0.75"):
+        assert forbidden not in logged
+
+
+class ScaledModel(FixedModel):
+    """A model that also reports how far the frame is from calibration: `z` is what it says."""
+
+    def __init__(self):
+        super().__init__()
+        self.z = np.zeros(len(model_columns(FEATURE_SIZE_V2)))
+
+    def standardize(self, X):
+        return np.array([self.z for _ in X])
+
+
+class ScaledCalibration(FakeCalibration):
+
+    model = ScaledModel()
+
+
+def test_reading_reports_how_far_the_features_are_from_calibration(session_log):
+
+    session = reading_session(calibration_factory=ScaledCalibration)
+    ScaledCalibration.model.gaze = CELL_CENTRES[(1, 0)]
+    ScaledCalibration.model.z = np.zeros(len(model_columns(FEATURE_SIZE_V2)))
+    ScaledCalibration.model.z[-1] = -35.0   # the last model column: an eye centre, far from calibration
+
+    t = 100000.0
+    for _ in range(40):
+        session.receive(frame(t))
+        t += 33.0
+    session.receive(dump({"type": "quit"}))
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["frames_out_of_range"] == "40"
+    assert ended["max_abs_z"] == "35.0"
+    assert ended["worst_feature_group"] == "eye_centre"
+
+
+def test_a_model_without_standardize_still_reads_and_reports_no_scale(session_log):
+
+    session = reading_session()
+
+    read(session, [CELL_CENTRES[(1, 0)]], 100000.0, frames_per_cell=10)
+    session.receive(dump({"type": "quit"}))
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["max_abs_z"] == "0.0"
+    assert ended["worst_feature_group"] == "None"
+
+
+def test_a_shifted_head_no_longer_moves_the_estimate_of_a_real_calibrated_model(session_log):
+    """End to end with the real Calibration and GazeModel. The head sits still in calibration and then
+    2 units closer: head pose is not a model input, so nothing is out of range."""
+
+    session = started(calibration_factory=Calibration)
+    t = 0.0
+    for index, point in enumerate(CALIBRATION_POINTS):
+        for k in range(CALIBRATION_SAMPLES_PER_POINT):
+            # Looking at different dots moves the iris; the head stays almost still.
+            message = frame_dict(t, point, shift=(point[0] - 0.5) * 0.1)
+            message["matrix"][2][3] = -35.0 + 0.001 * ((index + k) % 3)
+            session.receive(dump(message))
+            t += 33.0
+    session.receive(dump({"type": "calibration_done"}))
+
+    for _ in range(30):
+        message = frame_dict(t)
+        message["matrix"][2][3] = -33.0
+        message["matrix"][0][2] = 0.4          # and turned
+        message["nose"] = {"x": 0.55, "y": 0.6}
+        session.receive(dump(message))
+        t += 33.0
+    session.receive(dump({"type": "quit"}))
+
+    [ended] = events(session_log, "session_ended")
+    assert ended["frames_out_of_range"] == "0"
+    assert float(ended["max_abs_z"]) < 3
+    assert ended["worst_feature_group"] == "None"
+
+
+def test_head_pose_and_face_position_do_not_change_what_the_model_sees():
+
+    session = started()
+
+    base = frame_dict(1000.0)
+    moved = frame_dict(1033.0)
+    moved["matrix"] = [[0.9, 0.3, -0.1, 4.0], [-0.3, 0.9, 0.2, -3.0], [0.1, -0.2, 0.9, -20.0], [0, 0, 0, 1]]
+    moved["nose"] = {"x": 0.7, "y": 0.8}
+
+    a = session._features(protocol.Frame.model_validate(base))
+    b = session._features(protocol.Frame.model_validate(moved))
+
+    assert list(a) == list(b)
+
+
+def test_the_model_sees_only_the_eye_features():
+
+    session = started()
+
+    features = session._features(protocol.Frame.model_validate(frame_dict(1000.0, eye_centres=True)))
+
+    assert len(features) == len(model_columns(FEATURE_SIZE_V2))
+    assert len(features) == 10
+
+
+def test_a_version_1_session_has_no_eye_centre_columns():
+
+    session = make_session()
+    session.receive(hello(version=1))
+    session.receive(quadrant_layout())
+
+    features = session._features(protocol.Frame.model_validate(frame_dict(1000.0)))
+
+    assert len(features) == 6
+
+
+def test_a_frame_without_a_face_gives_no_features():
+
+    session = started()
+    message = frame_dict(1000.0)
+    message["iris"][0] = {"x": 1.4, "y": 0.4}
+
+    assert session._features(protocol.Frame.model_validate(message)) is None

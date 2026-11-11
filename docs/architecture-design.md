@@ -81,7 +81,9 @@ The browser sends this service only the landmark subset the features need, plus 
 
 Instead of using WebEyeTrack exactly as provided, adapt its approach to our application:
 
-Eye appearance + Head pose + Face position -> Gaze position
+Eye appearance (+ Head pose + Face position) -> Gaze position
+
+**Current inputs**: the model is fitted on the eye appearance features only (iris position, eye openness and, on protocol version 2, the eye centres). Head pose and face position are still extracted by `extract_features`, but `MODEL_FEATURE_GROUPS` in `eye_features.py` leaves them out of the model. During calibration the Learner's head is nearly still, so those features carry almost no information about where they look, yet the regression still fits weights to them from the 16 targets. A degree or two of head rotation at reading time then measured about 14 calibration standard deviations, and moving the estimate by more than a quarter of the screen. Adding a group back to `MODEL_FEATURE_GROUPS` brings it back into the model; this is worth revisiting when the CNN replaces the regression or if Learners move their heads while reading.
 
 The model predicts a normalized point G=(x,y) representing where on the screen the learner is looking. WebEyeTrack's lightweight CNN architecture is attractive because it is designed for real-time webcam gaze estimation.
 

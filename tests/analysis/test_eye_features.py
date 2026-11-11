@@ -328,3 +328,67 @@ def test_v2_uses_a_centre_with_confidence_0_35_but_not_0_25():
 
     assert used[20:24] == pytest.approx([0.4, 0.6, 0.6, 0.4], abs=1e-5)
     np.testing.assert_array_equal(ignored[20:24], ignored[0:4])
+
+
+def test_feature_groups_cover_the_whole_version_2_vector_in_order():
+
+    from app.analysis.eye_features import FEATURE_GROUPS, FEATURE_SIZE_V2
+
+    assert FEATURE_GROUPS[0][1] == 0
+    assert FEATURE_GROUPS[-1][2] == FEATURE_SIZE_V2
+    for (_, _, end), (_, start, _) in zip(FEATURE_GROUPS, FEATURE_GROUPS[1:]):
+        assert end == start
+
+
+@pytest.mark.parametrize("index, group", [
+    (0, "iris"), (3, "iris"), (4, "eye_openness"), (6, "head_rotation"), (14, "head_rotation"),
+    (15, "head_position"), (17, "head_position"), (18, "nose_position"), (20, "eye_centre"), (23, "eye_centre"),
+])
+def test_feature_group_names_the_part_of_the_vector(index, group):
+
+    from app.analysis.eye_features import feature_group
+
+    assert feature_group(index) == group
+
+
+def test_feature_group_rejects_an_index_past_the_vector():
+
+    from app.analysis.eye_features import feature_group
+
+    with pytest.raises(IndexError):
+        feature_group(24)
+
+
+def test_feature_groups_match_what_extract_features_puts_there():
+    """The translation of the head pose matrix must sit where `head_position` says."""
+
+    from app.analysis.eye_features import feature_group
+
+    matrix = [[1, 0, 0, 7.0], [0, 1, 0, 8.0], [0, 0, 1, 9.0], [0, 0, 0, 1]]
+    features = extract_features(_frame(matrix=matrix))
+
+    assert list(features[15:18]) == [7.0, 8.0, 9.0]
+    assert feature_group(15) == "head_position"
+
+
+def test_the_model_uses_the_eye_features_and_not_head_pose_or_face_position():
+
+    from app.analysis.eye_features import (
+        FEATURE_SIZE, FEATURE_SIZE_V2, MODEL_FEATURE_GROUPS, feature_group, model_columns,
+    )
+
+    assert MODEL_FEATURE_GROUPS == ("iris", "eye_openness", "eye_centre")
+    assert model_columns(FEATURE_SIZE_V2) == [0, 1, 2, 3, 4, 5, 20, 21, 22, 23]
+    assert {feature_group(i) for i in model_columns(FEATURE_SIZE_V2)} == set(MODEL_FEATURE_GROUPS)
+
+    # Version 1 has no eye centres.
+    assert model_columns(FEATURE_SIZE) == [0, 1, 2, 3, 4, 5]
+
+
+def test_model_columns_leave_out_every_head_pose_and_face_position_index():
+
+    from app.analysis.eye_features import FEATURE_SIZE_V2, model_columns
+
+    left_out = set(range(FEATURE_SIZE_V2)) - set(model_columns(FEATURE_SIZE_V2))
+
+    assert left_out == set(range(6, 20))   # rotation 6-14, translation 15-17, nose 18-19

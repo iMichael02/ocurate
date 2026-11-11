@@ -38,6 +38,51 @@ EYE_CENTRE_MAX_OFFSET_WIDTHS = 0.2
 EYE_CENTRE_MAX_OFFSET_HEIGHTS = 0.5
 
 
+# Where each part sits in the vector `extract_features` returns (the version 1 vector, then the
+# version 2 eye centres). Keep in step with `parts` there. Used to say which kind of feature is
+# far outside what calibration saw (see app/sessions/reading_stats.py).
+FEATURE_GROUPS = [
+    ("iris", 0, 4),
+    ("eye_openness", 4, 6),
+    ("head_rotation", 6, 15),
+    ("head_position", 15, 18),
+    ("nose_position", 18, 20),
+    ("eye_centre", 20, 24),
+]
+
+
+# The parts of the vector the gaze model is fitted on. Head pose and face position are left out: during
+# calibration the Learner's head is nearly still, so those features carry almost no information about where
+# they look, yet the model still fits weights to them from the 16 targets. At reading time a small change in
+# how the Learner sits then shifts the estimate by a lot (a degree or two of head rotation measured as 14
+# calibration standard deviations). Add "head_rotation", "head_position" or "nose_position" here to bring a
+# group back; nothing else changes.
+MODEL_FEATURE_GROUPS = ("iris", "eye_openness", "eye_centre")
+
+
+def model_columns(size):
+    """The indices, in a feature vector of `size` values (FEATURE_SIZE or FEATURE_SIZE_V2), that the gaze
+    model uses. A version 1 vector has no eye centres, so those columns only exist from version 2."""
+
+    return [
+        index
+        for name, start, end in FEATURE_GROUPS
+        if name in MODEL_FEATURE_GROUPS
+        for index in range(start, end)
+        if index < size
+    ]
+
+
+def feature_group(index):
+    """The name of the part of the feature vector that `index` belongs to."""
+
+    for name, start, end in FEATURE_GROUPS:
+        if start <= index < end:
+            return name
+
+    raise IndexError(index)
+
+
 def landmark_xy(p):
 
     return np.array([

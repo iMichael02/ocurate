@@ -16,12 +16,13 @@ import numpy as np
 
 from app.analysis.calibration import CALIBRATION_POINTS, Calibration, target_index
 from app.analysis.cell_layout import cell_at
-from app.analysis.eye_features import extract_features
+from app.analysis.eye_features import FEATURE_SIZE, FEATURE_SIZE_V2, extract_features, model_columns
 from app.analysis.fixation_detector import FixationDetector
 from app.analysis.gaze_smoother import GazeSmoother
 from app.log_setup import log_event
 from app.analysis.reading_session import ReadingSession
 from app.schemas import protocol
+from app.sessions.reading_stats import ReadingStats
 from app.sessions.tokens import TokenError
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,7 @@ class Session:
         self._detector = None
         self._reading = None
         self._current_cell = None
+        self._stats = None
 
     # --- entry points ---------------------------------------------------------
 
@@ -291,8 +293,19 @@ class Session:
         return Reply()
 
     def _features(self, frame):
+        """The values the gaze model uses from this frame (the eye features, not head pose), or None if no
+        face. Calibration and reading both go through here, so the model sees the same columns throughout."""
 
-        return extract_features(frame, use_eye_centres=self._version == 2)
+        features = extract_features(frame, use_eye_centres=self._version == 2)
+
+        if features is None:
+            return None
+
+        return features[self._model_columns()]
+
+    def _model_columns(self):
+
+        return model_columns(FEATURE_SIZE_V2 if self._version == 2 else FEATURE_SIZE)
 
     # --- calibration ----------------------------------------------------------
 
@@ -337,6 +350,10 @@ class Session:
         result = self._calibration.finish()
         status = self._status(result.points, result.outcome, result.reason)
 
+        log_event(logger, "calibration_judged", session_id=self.session_id, attempt=self._attempt,
+                  outcome=result.outcome, reason=result.reason,
+                  ok_points=sum(1 for point in result.points if point.state == "ok"), points=len(result.points))
+
         if result.outcome == "ready":
             self._model = result.model
             # Calibration samples are never kept once the model is fitted.
@@ -376,6 +393,7 @@ class Session:
         self._detector = FixationDetector()
         self._reading = ReadingSession(self._auth.passage)
         self._current_cell = None
+        self._stats = ReadingStats(next(cell for cell in self._cells if (cell.row, cell.col) == (0, 0)))
         self.phase = Phase.READING
 
         return Reply()
@@ -384,13 +402,32 @@ class Session:
 
     def _on_reading_frame(self, frame):
 
+        reply = self._process_reading_frame(frame)
+
+        # Reading shows nothing until the first Cell is fixated, so say how it is going now and then.
+        if self.outcome is None and self._stats.report_due(frame.t):
+            log_event(logger, "reading_progress", session_id=self.session_id, **self._stats.fields())
+
+        return reply
+
+    def _process_reading_frame(self, frame):
+
+        self._stats.frame(frame.t)
         features = self._features(frame)
 
         if features is None:
+            self._stats.no_face()
             return Reply()
 
-        gaze = self._model.predict(np.asarray(features, dtype=float).reshape(1, -1))[0]
+        row = np.asarray(features, dtype=float).reshape(1, -1)
+        standardize = getattr(self._model, "standardize", None)
+
+        if standardize is not None:
+            self._stats.feature_scale(standardize(row)[0], self._model_columns())
+
+        gaze = self._model.predict(row)[0]
         gaze = self._smoother.update(gaze)
+        self._stats.gaze(float(gaze[0]), float(gaze[1]))
 
         # Timing is the browser's: frame.t is in ms, the analysis uses seconds.
         fixation = self._detector.update(gaze, frame.t / 1000.0)
@@ -400,6 +437,7 @@ class Session:
 
         x, y = fixation["position"]
         cell = cell_at(self._cells, float(x), float(y))
+        self._stats.fixation(float(x), float(y), cell)
 
         if cell is None or cell == self._current_cell:
             return Reply()
@@ -419,6 +457,7 @@ class Session:
         messages = []
 
         if not was_started:
+            self._stats.started = True
             messages.append(protocol.ReadingStarted(type="reading_started"))
 
         messages.append(protocol.Fixation(type="fixation", row=cell[0], col=cell[1], t=t))
@@ -465,8 +504,10 @@ class Session:
     def _finish(self, outcome):
 
         self.outcome = outcome
+        stats = self._stats.fields() if self._stats is not None else {}
+
         log_event(logger, "session_ended", session_id=outcome.session_id,
-                  outcome=outcome.kind, reason=outcome.reason)
+                  outcome=outcome.kind, reason=outcome.reason, **stats)
         self._release()
         self.phase = Phase.ENDED
 

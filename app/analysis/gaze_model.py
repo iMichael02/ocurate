@@ -28,3 +28,14 @@ class GazeModel:
             return None
 
         return self.model.predict(X)
+
+    def standardize(self, X):
+        """`X` as the regressor sees it: each feature as a distance from its
+        calibration mean, in calibration standard deviations. A value far from
+        0 means this frame lies outside what calibration saw, so the
+        prediction is an extrapolation. None before training."""
+
+        if not self.is_fitted:
+            return None
+
+        return self.model.named_steps["scaler"].transform(X)

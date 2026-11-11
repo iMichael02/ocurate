@@ -37,7 +37,7 @@ Modules:
 
 Pure logic, reused by the service:
 
-- `app/analysis/eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the model's feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/analysis/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
+- `app/analysis/eye_features.py` — turns the landmark subset and transformation matrix sent by the browser into the feature vector (iris position normalized per eye, eye aspect ratio, head pose + translation, nose position). The gaze model is fitted only on the eye groups (`MODEL_FEATURE_GROUPS`, `model_columns`): head pose and nose position stay in the vector but are left out of the model (see docs/architecture-design.md section 3). `extract_features` takes a `protocol.Frame` and returns `None` ("no face") if any landmark or the matrix is missing, malformed or off-image; `tests/analysis/golden/eye_features.json` pins its output to the vectors the old MediaPipe-based version produced.
 - `app/analysis/eye_centre.py` — Python reference of the Timm & Barth eye-centre method the browser runs (ADR 0004, docs/eye-centre.md); the service itself only receives its output in `frame.eye_centres` (protocol v2), which `extract_features(frame, use_eye_centres=True)` turns into 4 extra features
 - `app/analysis/gaze_model.py` — `GazeModel`, an sklearn `Ridge` regression pipeline; interim stand-in for the CNN ("BlazeGaze") (see docs/adr/0001)
 - `app/analysis/gaze_smoother.py` — EMA smoothing over raw per-frame gaze points (`GazeSmoother`)
@@ -47,7 +47,7 @@ Pure logic, reused by the service:
 - `app/schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
 - `app/analysis/reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
-- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: per-target mean of tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` only on success, `restart()` clears samples for a retry.
+- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: collects the tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` on every usable frame (not on per-target averages, so it sees the frames' real jitter) only on success, `restart()` clears samples for a retry.
 
 Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passages`), a cap on live sockets (`app.state.live_sessions` vs `max_concurrent_sessions`, close `1013`), and `FrameRateLimiter` in `session_manager.py` (close `4429`). The limiter reads the arrival clock, the one exception to "browser timestamps only", because it must hold against a browser that lies about `frame.t`.
 
