@@ -1,11 +1,12 @@
 import logging
+import time
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.config import load_settings
 from app.log_setup import log_event
-from app.passages.passage import Passage, UnknownPassageError, build_default_passage
+from app.passages.passage import Passage, UnknownPassageError, build_default_passage, build_short_passage
 from app.schemas.passage import passage_summary
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,13 @@ CREATE TABLE IF NOT EXISTS passages (
 """
 
 DEFAULT_PASSAGE_ID = "default"
+SHORT_PASSAGE_ID = "short"
+
+# The Passages every database starts with. `init_db` keeps each row equal to the text in code.
+SEED_PASSAGES = {
+    DEFAULT_PASSAGE_ID: build_default_passage,
+    SHORT_PASSAGE_ID: build_short_passage,
+}
 
 
 class StoredPassageError(ValueError):
@@ -47,17 +55,23 @@ def _to_passage(passage_id, text_lines):
 
 
 def init_db(engine):
-    """Create the passages table and make the `default` row match
-    `build_default_passage`, so a changed default text reaches the database on
-    the next run. Safe to run more than once, and from several processes at
-    once."""
-
-    params = {"id": DEFAULT_PASSAGE_ID, "text_lines": _encode(build_default_passage())}
+    """Migrate and seed: create the passages table, then make every row in
+    `SEED_PASSAGES` match the text in code, so a changed seed text reaches the
+    database on the next run. Passages added some other way are left alone.
+    Safe to run more than once, and from several processes at once."""
 
     with engine.begin() as connection:
-
         connection.execute(text(CREATE_PASSAGES_TABLE))
 
+    for passage_id, build in SEED_PASSAGES.items():
+        _upsert_passage(engine, passage_id, build())
+
+
+def _upsert_passage(engine, passage_id, passage):
+
+    params = {"id": passage_id, "text_lines": _encode(passage)}
+
+    with engine.begin() as connection:
         updated = connection.execute(
             text("UPDATE passages SET text_lines = :text_lines WHERE id = :id"), params
         ).rowcount
@@ -108,6 +122,22 @@ def list_passages(engine):
     return summaries
 
 
+def wait_and_init_db(engine, attempts=30, delay_seconds=2, sleep=time.sleep):
+    """`init_db`, retried while the database is still starting. Raises the last
+    error if it never becomes reachable."""
+
+    for attempt in range(1, attempts + 1):
+        try:
+            init_db(engine)
+            return
+        except OperationalError as error:
+            if attempt == attempts:
+                raise
+
+            print(f"database not ready (attempt {attempt}/{attempts}): {error.orig}")
+            sleep(delay_seconds)
+
+
 if __name__ == "__main__":
 
     database_url = load_settings().database_url
@@ -115,5 +145,5 @@ if __name__ == "__main__":
     if database_url is None:
         raise SystemExit("OCURATE_DATABASE_URL is not set")
 
-    init_db(create_engine(database_url))
-    print("passages table ready")
+    wait_and_init_db(create_engine(database_url))
+    print(f"passages table ready, seeded: {', '.join(SEED_PASSAGES)}")

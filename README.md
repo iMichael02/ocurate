@@ -29,7 +29,7 @@ venv/bin/pip install -r requirements.txt
 
 set -a; . ./.env; set +a            # load .env into this shell
 docker compose up -d --wait mysql
-venv/bin/python -m app.passages.passage_store      # creates the passages table and the default Passage
+venv/bin/python -m app.passages.passage_store      # creates the passages table and seeds the Passages
 venv/bin/uvicorn app.app:app --reload
 ```
 
@@ -58,11 +58,11 @@ Run the service and MySQL together.
 
 ```
 docker compose up -d --build --wait
-docker compose run --rm api python -m app.passages.passage_store
 curl http://localhost:8000/health
+curl http://localhost:8000/passages
 ```
 
-Compose reads `.env` on its own. The `api` container receives only `OCURATE_API_KEY`, `OCURATE_TOKEN_SECRET`, `OCURATE_CALLBACK_*`, `OCURATE_ALLOWED_ORIGINS` and `OCURATE_DEV_MODE`, plus a database URL that Compose builds from the `MYSQL_*` values. To change another setting, add it under `environment:` in `compose.yaml`.
+A one-shot `migrate` container runs `python -m app.passages.passage_store` once MySQL is healthy, and the `api` container starts only after it exits successfully, so there is no manual migration step. Compose reads `.env` on its own. The `api` container receives only `OCURATE_API_KEY`, `OCURATE_TOKEN_SECRET`, `OCURATE_CALLBACK_*`, `OCURATE_ALLOWED_ORIGINS` and `OCURATE_DEV_MODE`, plus a database URL that Compose builds from the `MYSQL_*` values. To change another setting, add it under `environment:` in `compose.yaml`.
 
 The container runs a single uvicorn process, as pending tokens live in memory. The image holds only `app/` and does not reload, so after a code change run `docker compose up -d --build api`. Tests run from the venv, not the container. For day-to-day development the Python route is faster.
 
@@ -76,11 +76,20 @@ Passages are read from MySQL. `compose.yaml` runs one, with an `ocurate` databas
 python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["MYSQL_PASSWORD"], safe=""))'
 ```
 
-`python -m app.passages.passage_store` creates the `passages` table and brings the default Passage up to date with the code. It is safe to re-run, also when several processes run it at once.
+`python -m app.passages.passage_store` creates the `passages` table and seeds it. Docker runs it for you through the `migrate` service; from the venv, run it yourself. It waits up to a minute for MySQL to accept connections. It is safe to re-run, also when several processes run it at once.
+
+Seeded Passages (`SEED_PASSAGES` in `app/passages/passage_store.py`); each run makes these rows match the text in code, and leaves any other row alone:
+
+| id | text |
+|---|---|
+| `default` | three rows: "read the texts", "with your eyes", "and count them" |
+| `short` | one row: "i can read this" |
+
+To add a seed, write a builder next to `build_short_passage` in `app/passages/passage.py` and list it in `SEED_PASSAGES`.
 
 Stop the container with `docker compose down`; the data stays in the volume. `docker compose down -v` also deletes it.
 
-The tests mock the database connection and need no MySQL server. The `/passages` endpoints answer 503 when the database is unreachable or the table is missing (run the command above), and an invalid stored row is left out of the listing and answers 500 on its own id.
+The tests mock the database connection and need no MySQL server. The `/passages` endpoints answer 503 when the database is unreachable or the table is missing (run `docker compose up -d --wait`, or the command above from the venv), and an invalid stored row is left out of the listing and answers 500 on its own id.
 
 ## Test
 

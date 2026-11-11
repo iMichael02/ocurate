@@ -60,6 +60,11 @@ def build_default_passage():
     ])
 
 
+def build_short_passage():
+
+    return Passage(["i can read this"])
+
+
 class UnknownPassageError(KeyError):
     """No Passage is stored under the requested id. Ids are stable: the web
     server stores them with each Session's result."""
