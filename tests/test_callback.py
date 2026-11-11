@@ -7,11 +7,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-import callback
-from app import create_app
-from callback import CallbackConfigError, CallbackSender, build_body, load_callback_config, sign
-from config import Settings
-from session_manager import Outcome
+from app import callback
+from app.app import create_app
+from app.callback import CallbackConfigError, CallbackSender, build_body, load_callback_config, sign
+from app.config import Settings
+from app.sessions.session_manager import Outcome
 
 # From the Standard Webhooks reference test suite (github.com/standard-webhooks/standard-webhooks).
 VECTOR_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"

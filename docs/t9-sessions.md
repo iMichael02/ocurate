@@ -2,7 +2,7 @@
 
 The web server calls `POST /sessions` to start a Session for a Learner. This service answers with a session id and a short-lived token. The web server hands both to the browser, and the browser puts the token in its WebSocket `hello` message (T8). Only the web server can create Sessions, because only it has the API key.
 
-Code: [tokens.py](../tokens.py) (signing, one-time use), [sessions_api.py](../sessions_api.py) (the endpoint), [schemas/sessions.py](../schemas/sessions.py) (request and response).
+Code: [tokens.py](../app/sessions/tokens.py) (signing, one-time use), [sessions_api.py](../app/api/sessions_api.py) (the endpoint), [schemas/sessions.py](../app/schemas/sessions.py) (request and response).
 
 ## Request and response
 
@@ -68,6 +68,9 @@ The token must not travel in a URL (query string or path). URLs end up in browse
 
 All four are `TokenError`, so T8 can catch that one class and close with `4401` (`invalid_token`).
 
+The expired and reused cases are covered on a real WebSocket by `test_an_expired_token_is_refused_with_4401` and `test_a_reused_token_is_refused_with_4401_and_the_first_socket_goes_on` in `tests/api/test_ws_api.py`: both get `invalid_token` and close `4401`.
+In the reused case the first socket is still open and keeps working.
+
 ## Config
 
 | Variable | Default | Meaning |
@@ -76,7 +79,7 @@ All four are `TokenError`, so T8 can catch that one class and close with `4401` 
 | `OCURATE_TOKEN_SECRET` | unset | HMAC secret for tokens. Unset means 503 for a caller with the key, unless dev mode. |
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | Token lifetime. Short on purpose, it only has to cover the time between creating the Session and opening the WebSocket. Must be above 0 or the app will not start. |
 | `OCURATE_DATABASE_URL` | unset | SQLAlchemy URL of the MySQL database holding the Passages (see README.md). Unset means 503. |
-| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Most Sessions that may wait for their token at once. |
+| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Most Sessions that may wait for their token at once. Also the most live WebSockets; an extra one is accepted and closed with `1013`, and its token is not spent. |
 | `OCURATE_DEV_MODE` | `0` | Local dev only. With no token secret, a random one is made at startup and a warning is logged. |
 
 There is no usable default secret. To make one: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
@@ -85,13 +88,13 @@ Local test run (PowerShell; in a second window for the request). Set `OCURATE_DA
 
 ```
 $env:OCURATE_API_KEY = "dev-key"; $env:OCURATE_DEV_MODE = "1"; $env:OCURATE_DATABASE_URL = "<url from the README>"
-venv\Scripts\uvicorn app:app
+venv\Scripts\uvicorn app.app:app
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/sessions -Headers @{"X-API-Key"="dev-key"} -ContentType "application/json" -Body '{"passage_id": "default"}'
 ```
 
 ## Logging
 
-We log `session_created` with the session id and Passage id, `session_create_refused` with a reason (`unauthorized`, `api_key_unset`, `token_secret_unset` or `too_many_pending`), and `passage_database_error` with the error class. The API key, the token and the secret are never logged, and `tests/test_sessions_api.py` checks this.
+We log `session_created` with the session id and Passage id, `session_create_refused` with a reason (`unauthorized`, `api_key_unset`, `token_secret_unset` or `too_many_pending`), and `passage_database_error` with the error class. The API key, the token and the secret are never logged, and `tests/api/test_sessions_api.py` checks this.
 
 ## Known limits
 

@@ -1,6 +1,6 @@
 # WebSocket protocol (draft, T2)
 
-Status: schemas in [`schemas/protocol.py`](../schemas/protocol.py) (tested in `tests/test_protocol.py`), the Session state machine in [`session_manager.py`](../session_manager.py) and the endpoint in [`ws_api.py`](../ws_api.py) are implemented. Not done yet: the signed result callback, per-Session frame-rate limiting and a cap on live Sessions. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](../architecture-design.md) section 0.
+Status: schemas in [`app/schemas/protocol.py`](../app/schemas/protocol.py) (tested in `tests/test_protocol.py`), the Session state machine in [`session_manager.py`](../app/sessions/session_manager.py) and the endpoint in [`ws_api.py`](../app/api/ws_api.py) are implemented. Not done yet: the signed result callback, per-Session frame-rate limiting and a cap on live Sessions. This is the single definition of every message exchanged between the browser and this service. A full example Session is in [session-transcript.md](./session-transcript.md), validated against the schemas by the tests. Context and lifecycle: [architecture-design.md](./architecture-design.md) section 0.
 
 Scope: the browser ↔ service WebSocket only. `POST /sessions` and the signed result callback (web server ↔ service) are separate HTTP contracts and are out of scope.
 
@@ -52,7 +52,7 @@ The browser opens one WebSocket at `/ws` (for example `ws://localhost:8000/ws`) 
 
 Landmark `x` and `y` are MediaPipe's values, normalized to the camera image (not the viewport), and are sent unchanged. They can fall slightly outside 0–1 when the face is partly out of frame, so the accepted range is **−0.5 to 1.5**. Values outside it are rejected (`invalid_message`). Values inside the margin but outside 0–1 are valid input; the feature code treats such frames as unusable rather than the protocol rejecting them. `target` and `layout` coordinates are viewport-normalized and must be strictly within 0–1. `z` is not sent (the current features do not use it).
 
-`matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that, as far as we recall, is column-major, so the browser must transpose while reshaping. Verify against real MediaPipe output when the frontend is built, and correct this note if it is wrong.
+`matrix` convention: 4 rows of 4 numbers, **row-major**, as `eye_features.py` reads it (rotation in `[:3, :3]`, translation in `[:3, 3]`). MediaPipe's `facialTransformationMatrixes[0]` is a flat 16-value array that is column-major (confirmed on real output: translation in indices 12-14, `[3]`, `[7]`, `[11]` are 0, `[15]` is 1), so the browser must transpose while reshaping.
 
 Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (17 of 478 landmarks, no `z`, no blendshapes), plus `t`, the optional `target` and, on version 2, the browser-computed `eye_centres`.
 
@@ -80,6 +80,7 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `out_of_order` (message not allowed in the current state)
 - `timestamp_regression`
 - `calibration_failed` (sent with the final failed attempt, together with `abandoned`)
+- `rate_limited` (frames faster than the cap, together with `abandoned`)
 
 `abandoned.reason`:
 
@@ -89,6 +90,9 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 - `frame_timeout` (30 s without frames)
 - `protocol_error`
 - `calibration_failed` (all attempts used)
+- `rate_limited` (frames faster than the cap)
+
+Before the handshake the service checks the `Origin` header against `OCURATE_ALLOWED_ORIGINS`. An unlisted origin is refused with HTTP 403 (a close before accept); a request with no `Origin` is let through.
 
 WebSocket close codes:
 
@@ -99,6 +103,8 @@ WebSocket close codes:
 | `4401` | bad token |
 | `4408` | timeout |
 | `4409` | unsupported version |
+| `4429` | frames arrived faster than `OCURATE_MAX_FRAMES_PER_SECOND` (two-second burst allowance). The service sends `error{code: "rate_limited"}`, then `abandoned{reason: "rate_limited"}`, then closes. |
+| `1013` | the service already has `OCURATE_MAX_CONCURRENT_SESSIONS` live sockets. Sent right after the handshake, before `hello`; the token is not spent, so the browser may retry. |
 | `1011` | the Passage for a valid token could not be loaded (database down). No message is sent; the token is spent, so the web server must create a new Session. |
 
 ## State order

@@ -50,7 +50,7 @@
 
 | ID   | Verification method                            | Pass criterion                            | When (automatic / each sprint / before demo) | Owner      | Result | Evidence                                               |
 | ---- | ---------------------------------------------- | ----------------------------------------- | -------------------------------------------- | ---------- | ------ | ------------------------------------------------------ |
-| REQ-01 | Golden tests: `tests/test_eye_features.py`, `test/eye-centre.test.js` | All cases within tolerance | Automatic | Backend / frontend dev | ✅ | `pytest` 238 and `npm test` 25 passed, 2026-10-26 |
+| REQ-01 | Golden tests: `tests/analysis/test_eye_features.py`, `test/eye-centre.test.js` | All cases within tolerance | Automatic | Backend / frontend dev | ✅ | `pytest` 238 and `npm test` 25 passed, 2026-10-26 |
 | REQ-02 | Unit tests: bad landmark/matrix; Calibration at 11 vs 12 targets, missing row/column, retry | All pass | Automatic | Backend dev | ✅ | `pytest` 238 passed, 2026-10-26 |
 | REQ-03 | Time `detect()` with/without eye centres over 100 frames in the browser | Within threshold | Each sprint | Frontend dev | ⚠️ | Dev machine, before optimisation: 15.2 → 23.1 ms; now 0.51 ms per crop (Node). Browser not re-measured |
 | REQ-04 | Inspect network panel for one Session; run `tests/test_log_setup.py` | Only protocol fields sent; no landmarks in logs | Before demo | Whole team | ⚠️ | Log tests pass; network check not run |

@@ -1,54 +1,104 @@
 # Ocurate gaze-analysis service
 
-Backend for the Ocurate web interface. Read [CONTEXT.md](./CONTEXT.md) for the domain terms and [architecture-design.md](./architecture-design.md) for the pipeline and the frontend ↔ backend contract.
+Backend for the Ocurate web interface. Read [CONTEXT.md](./CONTEXT.md) for the domain terms and [docs/architecture-design.md](./docs/architecture-design.md) for the pipeline and the frontend ↔ backend contract.
 
-## Setup
+## Prerequisites
+
+- Python 3.12
+- Docker with Compose v2 (`docker compose`), for MySQL and for the Docker route
+
+The service needs MySQL for anything beyond `GET /health`: `POST /sessions` and `/ws` both look up a Passage. Both quickstarts below start one in Docker.
+
+## Configure
+
+Both quickstarts read their settings from a `.env` file next to `compose.yaml`. Git ignores it.
+
+```
+cp -n .env.example .env
+```
+
+`-n` leaves an existing `.env` untouched, so merge any missing keys by hand. The defaults in `.env.example` work for local development. Edit the values if port 3306 or 8000 is taken, or if you change the password (then also update `MYSQL_PASSWORD_URLENCODED` and `OCURATE_DATABASE_URL`).
+
+## Quickstart: Python
+
+Run the service from a venv and keep only MySQL in Docker.
 
 ```
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
+
+set -a; . ./.env; set +a            # load .env into this shell
+docker compose up -d --wait mysql
+venv/bin/python -m app.passages.passage_store      # creates the passages table and the default Passage
+venv/bin/uvicorn app.app:app --reload
 ```
+
+`OCURATE_DEV_MODE=1` makes the service generate its token secret at startup. The secret and the pending tokens live in one process, so run uvicorn without `--reload` while it is set, or tokens die on every reload.
+
+Check it, from another terminal in the same directory:
+
+```
+curl http://localhost:8000/health
+# {"status":"ok"}
+
+curl http://localhost:8000/passages
+# [{"id":"default", ...}]
+
+curl -X POST http://localhost:8000/sessions \
+  -H "X-API-Key: dev-api-key" -H "Content-Type: application/json" \
+  -d '{"passage_id": "default"}'
+# 201 with session_id, token and expires_in
+```
+
+The token is valid for 60 seconds and works once. The frontend dev page on `:5173` opens `/ws` with it; the origin must be listed in `OCURATE_ALLOWED_ORIGINS`.
+
+## Quickstart: Docker
+
+Run the service and MySQL together.
+
+```
+docker compose up -d --build --wait
+docker compose run --rm api python -m app.passages.passage_store
+curl http://localhost:8000/health
+```
+
+Compose reads `.env` on its own. The `api` container receives only `OCURATE_API_KEY`, `OCURATE_TOKEN_SECRET`, `OCURATE_CALLBACK_*`, `OCURATE_ALLOWED_ORIGINS` and `OCURATE_DEV_MODE`, plus a database URL that Compose builds from the `MYSQL_*` values. To change another setting, add it under `environment:` in `compose.yaml`.
+
+The container runs a single uvicorn process, as pending tokens live in memory. The image holds only `app/` and does not reload, so after a code change run `docker compose up -d --build api`. Tests run from the venv, not the container. For day-to-day development the Python route is faster.
 
 ## Database
 
-Passages are read from MySQL. `compose.yaml` runs one locally, with an `ocurate` database kept in the `mysql-data` volume. Choose the credentials through environment variables (or a `.env` file next to `compose.yaml`, which git ignores). They take effect the first time the volume is created:
+Passages are read from MySQL. `compose.yaml` runs one, with an `ocurate` database kept in the `mysql-data` volume. `MYSQL_USER` and `MYSQL_PASSWORD` only take effect the first time that volume is created.
+
+`MYSQL_PASSWORD_URLENCODED` must be the percent-encoded form of `MYSQL_PASSWORD`, because it goes into a URL. To produce it:
 
 ```
-export MYSQL_USER=ocurate
-export MYSQL_PASSWORD=choose-a-password
-docker compose up -d --wait
+python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["MYSQL_PASSWORD"], safe=""))'
 ```
 
-If port 3306 is already taken, set `MYSQL_PORT` to another host port and use that port in the URL below.
-
-Point the service at it (the password is percent-encoded so characters like `@` or `/` are safe), then create the `passages` table and bring the default Passage up to date with the code (safe to re-run, also when several processes run it at once):
-
-```
-export OCURATE_DATABASE_URL="mysql+pymysql://$MYSQL_USER:$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["MYSQL_PASSWORD"], safe=""))')@127.0.0.1:${MYSQL_PORT:-3306}/ocurate?charset=utf8mb4"
-venv/bin/python passage_store.py
-```
+`python -m app.passages.passage_store` creates the `passages` table and brings the default Passage up to date with the code. It is safe to re-run, also when several processes run it at once.
 
 Stop the container with `docker compose down`; the data stays in the volume. `docker compose down -v` also deletes it.
 
 The tests mock the database connection and need no MySQL server. The `/passages` endpoints answer 503 when the database is unreachable or the table is missing (run the command above), and an invalid stored row is left out of the listing and answers 500 on its own id.
-
-## Run
-
-```
-venv/bin/uvicorn app:app --reload
-```
-
-With `OCURATE_DEV_MODE=1` run it without `--reload`: the generated token secret and the pending tokens live in one process.
-
-`GET /health` answers `{"status": "ok"}`.
-
-`POST /sessions` lets the web server create a Session. It needs `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally). See [docs/t9-sessions.md](./docs/t9-sessions.md).
 
 ## Test
 
 ```
 venv/bin/pytest
 ```
+
+## Git hooks
+
+[pre-commit](https://pre-commit.com) runs `ruff` and the unit tests before each commit, and rejects commit messages with a line
+over 120 characters. Install it once, with the venv active:
+
+```
+venv/bin/pip install pre-commit
+venv/bin/pre-commit install
+```
+
+Run the checks by hand with `pre-commit run --all-files`. CI runs the same tests on every push.
 
 ## Configuration
 
@@ -64,13 +114,16 @@ All settings are environment variables. Unset or empty values use the default.
 | `OCURATE_TOKEN_TTL_SECONDS` | `60` | How long a Session token stays valid |
 | `OCURATE_SESSION_INACTIVITY_SECONDS` | `30` | Seconds without frames before a Session is abandoned |
 | `OCURATE_MAX_MESSAGE_BYTES` | `65536` | Largest accepted WebSocket message |
-| `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session |
-| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Sessions allowed to wait for their token at once; `POST /sessions` answers 503 past it |
+| `OCURATE_MAX_FRAMES_PER_SECOND` | `30` | Frame-rate cap per Session. Frames are paced with a two-second burst allowance, so a browser at 30 fps never trips it; a sustained higher rate ends the Session with `4429` |
+| `OCURATE_MAX_CONCURRENT_SESSIONS` | `100` | Sessions allowed to wait for their token at once (`POST /sessions` answers 503 past it), and also the most live WebSockets (an extra one is closed with `1013`) |
+| `OCURATE_ALLOWED_ORIGINS` | empty | Comma-separated browser origins (e.g. `http://localhost:5173`) allowed to open `/ws` and to call `GET /passages` (CORS). Empty refuses every browser origin on `/ws` and sends no CORS headers. Clients sending no `Origin` are not checked |
 | `OCURATE_MAX_CALIBRATION_ATTEMPTS` | `3` | Calibration attempts per Session before it is abandoned |
 | `OCURATE_LOG_LEVEL` | `INFO` | Python logging level |
 | `OCURATE_DEV_MODE` | `0` | Local dev only. With no token secret set, a random one is made at startup (tokens then die with the process) |
 
 Unset secrets let the app start for local development. The endpoints that need them must refuse to work while they are unset. Never set `OCURATE_DEV_MODE` in production.
+
+`POST /sessions` needs `OCURATE_API_KEY` and `OCURATE_TOKEN_SECRET` (or `OCURATE_DEV_MODE=1` locally). See [docs/t9-sessions.md](./docs/t9-sessions.md). The WebSocket messages are defined in [docs/websocket-protocol.md](./docs/websocket-protocol.md).
 
 ## Logging
 
