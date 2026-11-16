@@ -4,6 +4,8 @@ Backend for the Ocurate web interface. Read [CONTEXT.md](./CONTEXT.md) for the d
 
 ## Prerequisites
 
+The commands below are for Unix shells (Linux, macOS, WSL, Git Bash). On Windows PowerShell, activate the venv with `venv\Scripts\Activate.ps1`, call `venv\Scripts\python` and `venv\Scripts\pip` instead of `venv/bin/...`, and set variables with `$env:NAME="value"` instead of `set -a; . ./.env`.
+
 - Python 3.12
 - Docker with Compose v2 (`docker compose`), for MySQL and for the Docker route
 
@@ -50,7 +52,7 @@ curl -X POST http://localhost:8000/sessions \
 # 201 with session_id, token and expires_in
 ```
 
-The token is valid for 60 seconds and works once. The frontend dev page on `:5173` opens `/ws` with it; the origin must be listed in `OCURATE_ALLOWED_ORIGINS`.
+The token is valid for 60 seconds and works once. The frontend dev page on `:5173` opens `/ws` with it; the origin must be listed in `OCURATE_ALLOWED_ORIGINS`. To connect the browser page to this service, follow [Real service mode](https://github.com/iMichael02/ocurate-fe#real-service-mode-mock0) in the frontend README.
 
 ## Quickstart: Docker
 
