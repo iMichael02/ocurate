@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ocurate gaze recorder</title>
+  <link rel="stylesheet" href="/fe/css/styles.css">
+  <style>
+    .cue {
+      position: fixed; z-index: 40; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
+      background: #e11d48; box-shadow: 0 0 0 5px rgba(225, 29, 72, .3); pointer-events: none;
+    }
+    .notice { background: #fff7e0; border: 1px solid #f0d58a; border-radius: 10px; padding: 12px 14px; }
+    #status { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <video id="session-video" class="sr-video" autoplay playsinline muted></video>
+
+  <main id="screen-start" class="screen">
+    <section class="card start-card">
+      <h1>Gaze recorder</h1>
+      <p class="muted">Records <b id="learner">…</b> for the gaze accuracy benchmark: 16 calibration dots, then a dot
+        that moves over each Cell of the Passage. Look at the dot the whole time and keep the window as it is.</p>
+
+      <p class="notice">This stores <b>face landmarks</b> (no video, no images) in a file on this computer. Only continue
+        if the Learner gave written consent. The file stays out of git and is deleted when the consent period ends.</p>
+
+      <ol class="steps">
+        <li>Enable the camera, then start. The page goes fullscreen.</li>
+        <li>Follow the dots. Do not resize the window, press Esc or switch tabs: that discards the recording.</li>
+        <li>When it says saved, close the page.</li>
+      </ol>
+
+      <div class="actions">
+        <button id="btn-camera" class="btn btn-secondary">Enable camera</button>
+        <button id="btn-start" class="btn btn-primary" disabled>▶ Start recording</button>
+      </div>
+      <p id="status" class="muted" role="status"></p>
+      <ul id="warnings" class="error"></ul>
+    </section>
+  </main>
+
+  <main id="screen-session" class="screen hidden">
+    <div id="passage" class="passage" aria-hidden="true"></div>
+    <div id="cue" class="cue hidden"></div>
+    <div id="calibration" class="calibration hidden">
+      <div class="calib-info"><p id="calib-text"></p></div>
+      <div id="calib-target" class="calib-target hidden"></div>
+    </div>
+  </main>
+
+  <script type="module" src="/recorder.js"></script>
+</body>
+</html>

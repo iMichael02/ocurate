@@ -39,6 +39,7 @@
 | REQ-03 | **Real-time capture.** Per-frame processing in the browser is fast enough to keep up with the webcam, including the eye-centre step. | Performance efficiency | Median ≤ 33 ms per frame on the client's laptop. Eye centres add ≤ 3 ms. | Slow frames mean fewer gaze samples. | ☐ |
 | REQ-04 | **Privacy.** No face image, crop or landmark leaves the browser or is stored or logged. Only computed coordinates are sent. | Security & confidentiality | 0 images, crops or landmarks stored or logged. | Faces are biometric data, and the client forbids storing user images. | ☐ |
 | REQ-05 | **Real-service interoperability.** Frontend and backend work together end to end, without the frontend's mock mode. | Compatibility | One full Session without mock: 0 protocol errors, ends `completed`. | Results must come from the real service, not a simulation. | ☐ |
+| REQ-06 | **Gaze accuracy.** The gaze model puts a fixation on the Braille Cell the Learner is looking at, because that decides Reading Speed and the secondary metrics. The threshold comes from the measured baseline, not a guess. | Functional suitability | Cell accuracy on held-out Learners (share of fixation frames on the correct Cell), also mean error in degrees and % of screen. Threshold: **to be set from the baseline** (docs/gaze-benchmark.md). | A model that cannot tell neighbouring Cells apart makes Reading Speed meaningless. | ☐ |
 
 ## 2. Verification (Q2 → Q3)
 
@@ -55,6 +56,7 @@
 | REQ-03 | **Browser benchmark.** Time `detect()` with and without eye centres over 100 frames. | Median within the REQ-03 thresholds. | Each sprint | Frontend dev | ⚠️ | Dev machine, before optimisation: 15.2 → 23.1 ms. Now 0.51 ms per crop (Node). Browser not re-measured. |
 | REQ-04 | **Network and log inspection.** Check the browser network panel during one Session, and run `tests/test_log_setup.py`. | Only protocol fields are sent, and no landmarks appear in logs. | Before demo | Whole team | ⚠️ | Log tests pass (re-run 2026-11-12). Network check not run. |
 | REQ-05 | **End-to-end run.** Run frontend and backend together through one full Session, with mock mode off. | Session ends `completed` with 0 protocol errors. | Before integration demo | Whole team | ⏳ Not run yet | Not run. The old note "WebSocket endpoint not written yet" is out of date: `ws_api.py` and its tests now exist (see §3). |
+| REQ-06 | **Offline benchmark.** Replay recorded calibration and reading frames through the service's pipeline with a fixed learner-level split (`python -m benchmark.run --data benchmark/data`). Report per condition: lighting, glasses, distance, webcam, head movement. | Cell accuracy at or above the threshold, no condition worse than the baseline. | Before demo | Backend dev | ⚠️ | Harness, metric and recording script are done. Measured on **one Learner, five sessions** (2026-11-17): baseline cell accuracy 19.2 % (8.6 to 34.1 %), error 17.3 % of the screen, about 3.8°. No candidate improves on it reliably (best, `clip-to-screen`, +1.4 points, below the +2 rule). Threshold **not set**: no other people to record, so no held-out Learner and no condition subgroups. Details: docs/gaze-benchmark.md. |
 
 > Status: ⏳ not run yet · ✅ pass · ⚠️ partial · ❌ fail (say what you'll do about it in §3)
 
@@ -84,6 +86,14 @@ Week of 26/10 — Current planning week
 - Not done: no end-to-end Session run (REQ-05), no browser timing re-measure (REQ-03), no network-panel check (REQ-04).
 - Shown to client: _to be filled in by the team before Friday's demo._
 - Next: add a golden test for the v2 vector, run the real-service Session and update REQ-05, and measure `detect()` in the browser.
+
+### Week of 16/11
+
+- Added: REQ-06 (gaze accuracy), an offline gaze benchmark (`benchmark/`, docs/gaze-benchmark.md: metric, replay harness that reuses the service's pipeline, fixed learner-level split, 16 candidate improvements, all off in the service) and a recording script (`benchmark/record.py`).
+- Measured: one Learner, five sessions. Baseline cell accuracy 19.2 % (8.6 to 34.1 % between sessions), error about 3.8° (17.3 % of the screen), so the model often lands a Cell or more away. The error on the calibration points it was fitted on is already 11 to 16 %, and reading is no worse than an unseen calibration target. The loss is not drift, it is that the eye features cannot separate gaze positions at Cell width.
+- Found: none of the 16 candidates improves it reliably. `clip-to-screen` is the only one that gains in every session (+1.4 points on average, below the +2 rule). Head pose, polynomial, kernel and v2 eye-centre options are worse or mixed. Nothing is adopted and the shipped model is unchanged.
+- Not done: other people (none available), so no held-out Learner, no condition subgroups and no REQ-06 threshold. Browser timing (REQ-03) not measured; the recorder ran at about 20 fps, a lead worth checking.
+- Next: a better eye representation (pretrained backbone, ADR 0001) as a separate ticket; recordings of other people whenever possible; measure `detect()` in the browser.
 
 ## 4. Data & confidentiality rules
 

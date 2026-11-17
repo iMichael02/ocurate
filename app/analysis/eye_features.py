@@ -60,14 +60,15 @@ FEATURE_GROUPS = [
 MODEL_FEATURE_GROUPS = ("iris", "eye_openness", "eye_centre")
 
 
-def model_columns(size):
+def model_columns(size, groups=MODEL_FEATURE_GROUPS):
     """The indices, in a feature vector of `size` values (FEATURE_SIZE or FEATURE_SIZE_V2), that the gaze
-    model uses. A version 1 vector has no eye centres, so those columns only exist from version 2."""
+    model uses. A version 1 vector has no eye centres, so those columns only exist from version 2.
+    `groups` is MODEL_FEATURE_GROUPS unless the offline benchmark tries another set."""
 
     return [
         index
         for name, start, end in FEATURE_GROUPS
-        if name in MODEL_FEATURE_GROUPS
+        if name in groups
         for index in range(start, end)
         if index < size
     ]

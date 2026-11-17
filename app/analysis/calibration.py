@@ -55,10 +55,14 @@ class Calibration:
     model on every usable frame, each labelled with its target. (Fitting on
     one average per target would teach the model clean inputs, and it would
     then amplify the frame-to-frame jitter of single frames at reading time.)
-    A frame with features None (no face) counts for nothing."""
+    A frame with features None (no face) counts for nothing.
 
-    def __init__(self):
+    `model_factory` builds the model to fit; the default is the shipped `GazeModel`. The benchmark passes
+    another to compare candidates."""
 
+    def __init__(self, model_factory=GazeModel):
+
+        self._model_factory = model_factory
         self.restart()
 
     def restart(self):
@@ -117,7 +121,7 @@ class Calibration:
         if len(rows) < GRID_SIDE or len(columns) < GRID_SIDE:
             return CalibrationResult(points, "failed", "missing_row_or_column", None)
 
-        model = GazeModel()
+        model = self._model_factory()
         model.train(np.array(X), np.array(y))
 
         return CalibrationResult(points, "ready", None, model)
