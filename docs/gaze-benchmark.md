@@ -148,7 +148,7 @@ Learners) could not be applied, so none is adopted and none is a proven loser fo
 
 The in-sample check explains the head-pose result: there is no drift for it to correct. The median time to
 process one reading frame is 0.3 to 0.6 ms for every candidate (REQ-03 concerns the browser step, which this
-does not measure).
+does not measure; see Open work).
 
 **Conclusion.** Nothing in this ticket's candidate list fixes Cell-level accuracy, because the limit is the
 information in the eye features, not the regression or the post-processing. The shipped model stays as it is.
@@ -221,8 +221,11 @@ cohort and nothing else.
    not the right size. Do not set it from the current one-Learner baseline.
 3. **Re-run the candidates** on those recordings (`venv/bin/python -m benchmark.run --data benchmark/data`).
    `clip-to-screen` is the one to watch.
-4. **Per-frame time in the browser** (REQ-03). The recorder ran at about 20 frames per second, not the 30 the
-   frontend caps at, which suggests the browser step (landmarks plus eye centres) takes about 50 ms per frame on
-   that machine. This is a lead, not a measurement.
+4. **Browser time per frame (REQ-03).** Measured 2026-11-17 with `venv/bin/python -m benchmark.browser_timing`
+   (Chrome 157, Linux, 12 cores): `detect()` median 11.4 ms without eye centres, 17.8 ms with (p95 19.1 ms).
+   The 33 ms median limit holds; the eye centres add 6.4 ms against a 3 ms limit, so that part fails. Left to do:
+   find why it is far above the 0.51 ms per crop seen in Node, and repeat on the client's laptop. The recorder's
+   20 to 24 fps is probably the frontend's frame cap skipping frames on a 60 Hz display, not processing time
+   (untested), and would be fixed in the frontend.
 5. **A model with a better eye representation** (pretrained backbone fine-tuned on calibration, ADR 0001), as a
    separate ticket.

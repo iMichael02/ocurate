@@ -178,11 +178,27 @@ def quality_warnings(recording):
     return warnings
 
 
+def serve_frontend(app, frontend):
+    """Adds `GET /fe/<path>` to `app`: the frontend's own js/ and css/ files, read-only. Shared with
+    benchmark/browser_timing.py."""
+
+    frontend = Path(frontend).resolve()
+
+    @app.get("/fe/{path:path}")
+    def frontend_file(path: str):
+        # Only the frontend's js/ and css/ folders: no dotfiles, node_modules or anything else.
+        full = (frontend / path).resolve()
+        allowed = path.startswith(FRONTEND_PREFIXES) and full.is_relative_to(frontend) and full.is_file() \
+            and not any(part.startswith(".") for part in Path(path).parts)
+        if not allowed:
+            raise HTTPException(404)
+        return FileResponse(full, headers={"Cache-Control": "no-store"})
+
+
 def create_app(learner, geometry, conditions, frontend, output, overwrite=False, dwell_ms=1000, passes=1):
     """The recorder server. `frontend` is the ocurate-fe folder, `output` the file to write."""
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    frontend = Path(frontend).resolve()
     output = Path(output)
     passage = build_default_passage()
     saved = {"done": False}
@@ -198,15 +214,7 @@ def create_app(learner, geometry, conditions, frontend, output, overwrite=False,
     def script():
         return static(PAGE_DIRECTORY / "recorder.js")
 
-    @app.get("/fe/{path:path}")
-    def frontend_file(path: str):
-        # Only the frontend's own js/ and css/ folders: no dotfiles, node_modules or anything else.
-        full = (frontend / path).resolve()
-        allowed = path.startswith(FRONTEND_PREFIXES) and full.is_relative_to(frontend) and full.is_file() \
-            and not any(part.startswith(".") for part in Path(path).parts)
-        if not allowed:
-            raise HTTPException(404)
-        return static(full)
+    serve_frontend(app, frontend)
 
     @app.get("/config")
     def config():

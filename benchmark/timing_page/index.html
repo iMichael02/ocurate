@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ocurate browser timing</title>
+  <link rel="stylesheet" href="/fe/css/styles.css">
+</head>
+<body>
+  <video id="video" class="sr-video" autoplay playsinline muted></video>
+  <main class="screen">
+    <section class="card start-card">
+      <h1>Browser timing (REQ-03)</h1>
+      <p class="muted">Times the frontend's <code>detect()</code> without and with eye centres over about 400 frames.
+        Keep your face in view and the tab visible. Only timings (numbers) are sent to the local server.</p>
+      <div class="actions">
+        <button id="btn-camera" class="btn btn-secondary">Enable camera</button>
+        <button id="btn-start" class="btn btn-primary" disabled>▶ Measure</button>
+      </div>
+      <p id="status" class="muted" role="status"></p>
+      <pre id="out"></pre>
+    </section>
+  </main>
+  <script type="module" src="/timing.js"></script>
+</body>
+</html>
