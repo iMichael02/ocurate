@@ -20,6 +20,7 @@ The code is the `app` package. `tests/` mirrors it.
 - `app/analysis/` — pure gaze and reading-analysis logic (no I/O)
 - `app/passages/` — Passage model and its MySQL store
 - `app/schemas/` — Pydantic request, response and protocol schemas
+- `benchmark/` — offline gaze-accuracy benchmark and its recording script `benchmark/record.py` (not part of the service); see docs/gaze-benchmark.md
 - `docs/` — architecture, protocol and ADRs
 
 Modules:
@@ -53,7 +54,7 @@ Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passage
 
 ## Testing
 
-`venv/bin/pytest` runs the suite (`tests/`, in subfolders that mirror the package). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `callback.py` (mocked httpx transport, fake clock), `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. Anything that needs a real webcam is now exercised through the web interface, not here.
+`venv/bin/pytest` runs the suite (`tests/`, in subfolders that mirror the package). The pure-logic modules (`passage.py`, `reading_session.py`, `schemas/protocol.py`, `calibration.py`, `eye_features.py`, `gaze_smoother.py`, `fixation_detector.py`, `gaze_model.py`) are unit tested (the Passage store and endpoints against mocked database connections, no real database), as are `config.py`, `log_setup.py`, `tokens.py`, `callback.py` (mocked httpx transport, fake clock), `session_manager.py`, `cell_layout.py`, `POST /sessions`, the WebSocket endpoint and the health endpoint. `tests/benchmark/` covers the benchmark. Anything that needs a real webcam is now exercised through the web interface, not here.
 
 ## Working in this repo
 
