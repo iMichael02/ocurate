@@ -89,6 +89,7 @@ class FakeCalibration:
     outcome = "ready"
     reason = None
     model = FixedModel()
+    residuals = None
 
     def __init__(self):
         self.restarts = 0
@@ -108,7 +109,8 @@ class FakeCalibration:
     def finish(self):
         points = [TargetStatus(i, "ok", n) for i, n in self.samples.items()]
         model = type(self).model if self.outcome == "ready" else None
-        return CalibrationResult(points, self.outcome, self.reason, model)
+        residuals = type(self).residuals if self.outcome == "ready" else None
+        return CalibrationResult(points, self.outcome, self.reason, model, residuals)
 
 
 def make_session(settings=None, calibration_factory=FakeCalibration):
@@ -121,11 +123,11 @@ def types(reply):
     return [m.type for m in reply.messages]
 
 
-def started(settings=None, **kwargs):
+def started(settings=None, version=2, **kwargs):
     """A Session that has sent hello and layout."""
 
     session = make_session(settings, **kwargs)
-    session.receive(hello())
+    session.receive(hello(version=version))
     session.receive(quadrant_layout())
 
     return session
@@ -165,7 +167,7 @@ def test_hello_is_acknowledged_with_the_negotiated_version():
     reply = session.receive(hello(version=1))
 
     assert reply.close_code is None
-    assert reply.messages[0].model_dump() == {"type": "hello_ack", "version": 1, "supported": [1, 2]}
+    assert reply.messages[0].model_dump() == {"type": "hello_ack", "version": 1, "supported": [1, 2, 3]}
     assert session.session_id == "session-1"
     assert session.phase is Phase.LAYOUT
 
@@ -174,11 +176,11 @@ def test_an_unsupported_version_is_refused_before_the_token_is_checked():
 
     session = make_session()
 
-    reply = session.receive(hello(version=3, token="not even checked"))
+    reply = session.receive(hello(version=4, token="not even checked"))
 
     assert reply.close_code == protocol.CLOSE_UNSUPPORTED_VERSION
     assert reply.messages[0].code == "unsupported_version"
-    assert reply.messages[0].supported == [1, 2]
+    assert reply.messages[0].supported == [1, 2, 3]
 
 
 @pytest.mark.parametrize("token", ["bad", "used"])
@@ -1011,3 +1013,150 @@ def test_a_frame_without_a_face_gives_no_features():
     message["iris"][0] = {"x": 1.4, "y": 0.4}
 
     assert session._features(protocol.Frame.model_validate(message)) is None
+
+
+# --- protocol version 3: calibration error and start gaze -------------------------
+
+@pytest.fixture
+def held_out_residuals():
+    """A held-out error of 0.01 across and 0.02 down the 1000 x 800 viewport of quadrant_layout."""
+
+    FakeCalibration.residuals = np.array([[0.01, 0.0], [0.0, 0.02]])
+    yield
+    FakeCalibration.residuals = None
+
+
+def ready_status(session):
+
+    reply, _ = calibrate(session)
+
+    return reply.messages[0]
+
+
+def test_version_3_is_acknowledged():
+
+    session = make_session()
+
+    reply = session.receive(hello(version=3))
+
+    assert reply.messages[0].model_dump() == {"type": "hello_ack", "version": 3, "supported": [1, 2, 3]}
+
+
+def test_version_3_sends_the_held_out_calibration_error_in_px(held_out_residuals):
+
+    status = ready_status(started(version=3))
+
+    assert status.outcome == "ready"
+    # (10 px + 16 px) / 2
+    assert status.calibration_error_px == pytest.approx(13.0)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_older_versions_get_no_calibration_error(held_out_residuals, version):
+
+    status = ready_status(started(version=version))
+
+    assert status.outcome == "ready"
+    assert "calibration_error_px" not in json.loads(protocol.serialize(status))
+
+
+def test_version_3_sends_no_error_when_none_could_be_measured():
+
+    status = ready_status(started(version=3))
+
+    assert status.outcome == "ready"
+    assert "calibration_error_px" not in json.loads(protocol.serialize(status))
+
+
+def test_a_failed_calibration_on_version_3_has_no_error(held_out_residuals):
+
+    class Failing(FakeCalibration):
+        outcome = "failed"
+        reason = "too_few_points"
+
+    status = ready_status(started(version=3, calibration_factory=Failing))
+
+    assert status.outcome == "failed"
+    assert status.calibration_error_px is None
+
+
+def test_the_error_is_not_logged(held_out_residuals, session_log):
+
+    ready_status(started(version=3))
+    text = " ".join(record.getMessage() for record in session_log)
+
+    assert "calibration_judged" in text
+    assert "13.0" not in text
+    assert "error" not in text
+
+
+def test_version_3_reading_started_carries_the_fixations_gaze():
+
+    session = reading_session(version=3)
+
+    sent, _ = read(session, [(0.2, 0.3)], 100000.0)
+
+    started_message = sent[0]
+    assert started_message.type == "reading_started"
+    assert (started_message.gaze.x, started_message.gaze.y) == pytest.approx((0.2, 0.3))
+
+
+def test_the_start_gaze_is_clamped_into_the_viewport():
+
+    session = reading_session(version=3)
+
+    # Within 0.02 of Cell (0, 0), so it starts reading, but just outside the viewport.
+    sent, _ = read(session, [(-0.01, 0.25)], 100000.0)
+
+    assert sent[0].type == "reading_started"
+    assert (sent[0].gaze.x, sent[0].gaze.y) == pytest.approx((0.0, 0.25))
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_older_versions_get_a_bare_reading_started(version):
+
+    session = reading_session(version=version)
+
+    sent, _ = read(session, [CELL_CENTRES[(0, 0)]], 100000.0)
+
+    assert json.loads(protocol.serialize(sent[0])) == {"type": "reading_started"}
+
+
+def test_only_the_first_fixation_reports_a_gaze_position():
+
+    session = reading_session(version=3)
+
+    sent, _ = read(session, [CELL_CENTRES[c] for c in [(0, 0), (0, 1)]], 100000.0)
+
+    assert types_of(sent) == ["reading_started", "fixation", "fixation"]
+    assert all(not hasattr(m, "gaze") for m in sent if m.type == "fixation")
+
+
+def test_version_3_accepts_eye_centres_and_uses_their_columns():
+
+    session = started(version=3)
+
+    assert session.receive(frame(0.0, CALIBRATION_POINTS[0], eye_centres=True)).close_code is None
+    features = session._features(protocol.Frame.model_validate(frame_dict(1000.0, eye_centres=True)))
+    assert len(features) == len(model_columns(FEATURE_SIZE_V2))
+
+
+def test_a_full_version_3_session_with_the_real_calibration_reports_its_error():
+
+    session = make_session(calibration_factory=Calibration)
+    session.receive(hello(version=3))
+    session.receive(quadrant_layout())
+
+    t = 0.0
+    reply = None
+    for index, point in enumerate(CALIBRATION_POINTS):
+        for k in range(CALIBRATION_SAMPLES_PER_POINT):
+            message = frame_dict(t, point, shift=(point[0] - 0.5) * 0.2 + 0.001 * (k % 3), eye_centres=True)
+            message["nose"] = {"x": 0.5, "y": 0.4 + 0.2 * point[1]}
+            reply = session.receive(dump(message))
+            t += 33.0
+
+    status = reply.messages[0]
+    assert status.outcome == "ready"
+    assert status.calibration_error_px is not None
+    assert 0.0 <= status.calibration_error_px < 1000

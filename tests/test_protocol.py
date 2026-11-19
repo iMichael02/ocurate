@@ -61,6 +61,7 @@ EYE_CENTRES = [{"x": 0.35, "y": 0.4, "confidence": 0.8}, {"x": 0.65, "y": 0.4, "
 CLIENT_VALID = {
     "hello": {"type": "hello", "version": 1, "token": "abc"},
     "hello v2": {"type": "hello", "version": 2, "token": "abc"},
+    "hello v3": {"type": "hello", "version": 3, "token": "abc"},
     "layout": layout(),
     "frame": frame(),
     "frame with target": frame(target={"x": 0.1, "y": 0.9}),
@@ -77,6 +78,8 @@ SERVER_VALID = {
     "calibration_status in progress": calibration_status(outcome=None),
     "calibration_status failed": calibration_status(outcome="failed", reason="too_few_points"),
     "reading_started": {"type": "reading_started"},
+    "reading_started with gaze (v3)": {"type": "reading_started", "gaze": {"x": 0.12, "y": 0.3}},
+    "calibration_status ready with error (v3)": calibration_status(calibration_error_px=42.5),
     "fixation": {"type": "fixation", "row": 0, "col": 3, "t": 99.0},
     "completed": {"type": "completed", "result": RESULT},
     "abandoned": {"type": "abandoned", "reason": "viewport_changed"},
@@ -244,6 +247,13 @@ SERVER_INVALID = {
     "fixation missing col": with_change(SERVER_VALID["fixation"], ["col"], DELETE),
     "fixation negative row": with_change(SERVER_VALID["fixation"], ["row"], -1),
     "reading_started extra field": {"type": "reading_started", "x": 1},
+    "reading_started gaze outside the viewport": {"type": "reading_started", "gaze": {"x": 1.2, "y": 0.3}},
+    "reading_started gaze missing y": {"type": "reading_started", "gaze": {"x": 0.2}},
+    "status error while in progress": calibration_status(outcome=None, calibration_error_px=10.0),
+    "status error with a failure": calibration_status(outcome="failed", reason="too_few_points",
+                                                      calibration_error_px=10.0),
+    "status negative error": calibration_status(calibration_error_px=-1.0),
+    "status error as string": calibration_status(calibration_error_px="10"),
     "completed missing cpm": with_change(SERVER_VALID["completed"], ["result", "cpm"], DELETE),
     "completed negative wpm": with_change(SERVER_VALID["completed"], ["result", "wpm"], -1.0),
     "completed extra result field": with_change(SERVER_VALID["completed"], ["result", "extra"], 1),
@@ -274,10 +284,11 @@ def test_every_message_type_has_valid_and_invalid_examples():
 
 
 def test_version_negotiation():
-    assert protocol.SUPPORTED_VERSIONS == (1, 2)
+    assert protocol.SUPPORTED_VERSIONS == (1, 2, 3)
     assert protocol.negotiate_version(1) == 1
     assert protocol.negotiate_version(2) == 2
-    assert protocol.negotiate_version(3) is None
+    assert protocol.negotiate_version(3) == 3
+    assert protocol.negotiate_version(4) is None
     assert protocol.negotiate_version(0) is None
 
 
@@ -317,3 +328,14 @@ def test_transcript_covers_a_complete_session():
     frames = [json.loads(body) for side, body in transcript_messages()
               if side == "client" and json.loads(body)["type"] == "frame"]
     assert any("target" in f for f in frames) and any("target" not in f for f in frames)
+
+
+def test_the_version_3_fields_are_left_out_when_not_set():
+    """A Session on version 1 or 2 must receive exactly the messages it always did."""
+
+    status = parse_server_message(wire(calibration_status()))
+    started = parse_server_message(wire({"type": "reading_started"}))
+
+    assert "calibration_error_px" not in json.loads(serialize(status))
+    assert json.loads(serialize(started)) == {"type": "reading_started"}
+    assert "calibration_error_px" not in status.model_dump()

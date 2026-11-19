@@ -8,11 +8,13 @@ every Cell of the Passage, monotonic timestamps) are enforced by the Session
 manager, not here.
 """
 
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, ClassVar, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_serializer, model_validator
 
-SUPPORTED_VERSIONS = (1, 2)
+SUPPORTED_VERSIONS = (1, 2, 3)
+# Version 3 adds calibration_status.calibration_error_px and reading_started.gaze.
+ACCURACY_VERSION = 3
 CALIBRATION_POINT_COUNT = 16
 
 LANDMARK_MIN = -0.5
@@ -53,6 +55,25 @@ CLOSE_RATE_LIMITED = 4429
 class Message(BaseModel):
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
+
+
+class OmitsNewFields(Message):
+    """A message with optional fields added in a later protocol version. The
+    fields named in `_omit_when_none` are left out of the JSON when None, so
+    a Session on an older version receives exactly the message it always did."""
+
+    _omit_when_none: ClassVar[tuple] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_new_fields(self, handler):
+
+        data = handler(self)
+
+        for name in self._omit_when_none:
+            if data.get(name) is None:
+                data.pop(name, None)
+
+        return data
 
 
 # --- shared parts -----------------------------------------------------------
@@ -197,7 +218,11 @@ class CalibrationPoint(Message):
     samples: NonNegativeInt
 
 
-class CalibrationStatus(Message):
+class CalibrationStatus(OmitsNewFields):
+    """`calibration_error_px` (protocol version 3 only) is the held-out mean
+    gaze error in CSS px, sent only with a ready outcome."""
+
+    _omit_when_none = ("calibration_error_px",)
 
     type: Literal["calibration_status"]
     points: Annotated[List[CalibrationPoint], Field(min_length=CALIBRATION_POINT_COUNT,
@@ -206,6 +231,7 @@ class CalibrationStatus(Message):
     reason: Optional[Literal["too_few_points", "missing_row_or_column"]] = None
     attempt: Annotated[int, Field(ge=1)]
     max_attempts: Annotated[int, Field(ge=1)]
+    calibration_error_px: Optional[NonNegativeFloat] = None
 
     @model_validator(mode="after")
     def _consistent(self):
@@ -215,11 +241,19 @@ class CalibrationStatus(Message):
             raise ValueError("reason is required when failed and only then")
         if self.attempt > self.max_attempts:
             raise ValueError("attempt exceeds max_attempts")
+        if self.calibration_error_px is not None and self.outcome != "ready":
+            raise ValueError("calibration_error_px is sent only with a ready outcome")
         return self
 
 
-class ReadingStarted(Message):
+class ReadingStarted(OmitsNewFields):
+    """`gaze` (protocol version 3 only) is the viewport-normalized position of
+    the Fixation that started reading, clamped to 0-1."""
+
+    _omit_when_none = ("gaze",)
+
     type: Literal["reading_started"]
+    gaze: Optional[Point] = None
 
 
 class Fixation(Message):

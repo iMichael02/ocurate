@@ -14,7 +14,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-from app.analysis.calibration import CALIBRATION_POINTS, Calibration, target_index
+from app.analysis.calibration import CALIBRATION_POINTS, Calibration, mean_error_px, target_index
 from app.analysis.cell_layout import cell_at
 from app.analysis.eye_features import FEATURE_SIZE, FEATURE_SIZE_V2, extract_features, model_columns
 from app.analysis.fixation_detector import FixationDetector
@@ -131,6 +131,7 @@ class Session:
         self._auth = None
         self._version = None
         self._cells = None
+        self._viewport = None
         self._last_t = None
 
         self._calibration = None
@@ -256,6 +257,7 @@ class Session:
             return self._violation("invalid_message", "layout must cover every Cell of the Passage")
 
         self._cells = message.cells
+        self._viewport = message.viewport
         self._calibration = self._calibration_factory()
         self.phase = Phase.CALIBRATING
 
@@ -296,7 +298,7 @@ class Session:
         """The values the gaze model uses from this frame (the eye features, not head pose), or None if no
         face. Calibration and reading both go through here, so the model sees the same columns throughout."""
 
-        features = extract_features(frame, use_eye_centres=self._version == 2)
+        features = extract_features(frame, use_eye_centres=self._version >= 2)
 
         if features is None:
             return None
@@ -305,7 +307,7 @@ class Session:
 
     def _model_columns(self):
 
-        return model_columns(FEATURE_SIZE_V2 if self._version == 2 else FEATURE_SIZE)
+        return model_columns(FEATURE_SIZE_V2 if self._version >= 2 else FEATURE_SIZE)
 
     # --- calibration ----------------------------------------------------------
 
@@ -334,7 +336,7 @@ class Session:
 
         return Reply()
 
-    def _status(self, points, outcome=None, reason=None):
+    def _status(self, points, outcome=None, reason=None, error_px=None):
 
         return protocol.CalibrationStatus(
             type="calibration_status",
@@ -343,12 +345,23 @@ class Session:
             reason=reason,
             attempt=self._attempt,
             max_attempts=self._settings.max_calibration_attempts,
+            calibration_error_px=error_px,
         )
+
+    def _calibration_error_px(self, result):
+        """The held-out mean error in CSS px of the Layout's viewport, on
+        protocol version 3 and later only. It is shown to the Learner, not
+        logged or reported."""
+
+        if self._version < protocol.ACCURACY_VERSION or result.residuals is None:
+            return None
+
+        return mean_error_px(result.residuals, self._viewport.width, self._viewport.height)
 
     def _judge_calibration(self):
 
         result = self._calibration.finish()
-        status = self._status(result.points, result.outcome, result.reason)
+        status = self._status(result.points, result.outcome, result.reason, self._calibration_error_px(result))
 
         log_event(logger, "calibration_judged", session_id=self.session_id, attempt=self._attempt,
                   outcome=result.outcome, reason=result.reason,
@@ -442,9 +455,9 @@ class Session:
         if cell is None or cell == self._current_cell:
             return Reply()
 
-        return self._on_fixation(cell, frame.t)
+        return self._on_fixation(cell, frame.t, (float(x), float(y)))
 
-    def _on_fixation(self, cell, t):
+    def _on_fixation(self, cell, t, position):
 
         was_started = self._reading.start_time is not None
         self._reading.register_fixation(cell[0], cell[1], t / 1000.0)
@@ -458,7 +471,7 @@ class Session:
 
         if not was_started:
             self._stats.started = True
-            messages.append(protocol.ReadingStarted(type="reading_started"))
+            messages.append(protocol.ReadingStarted(type="reading_started", gaze=self._start_gaze(position)))
 
         messages.append(protocol.Fixation(type="fixation", row=cell[0], col=cell[1], t=t))
 
@@ -472,6 +485,18 @@ class Session:
         self._finish(Outcome("completed", self.session_id, self._auth.passage_id, result=result))
 
         return Reply(messages, protocol.CLOSE_NORMAL)
+
+    def _start_gaze(self, position):
+        """The Fixation that started reading, for the browser's cursor check
+        (protocol version 3 and later). One point per Session, clamped into
+        the viewport because a Cell may be matched from just outside it."""
+
+        if self._version < protocol.ACCURACY_VERSION:
+            return None
+
+        x, y = (min(1.0, max(0.0, value)) for value in position)
+
+        return protocol.Point(x=x, y=y)
 
     # --- ending ---------------------------------------------------------------
 

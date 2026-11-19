@@ -47,7 +47,7 @@ Pure logic, reused by the service:
 - `app/schemas/passage.py` — `PassageSummary`, the JSON the Passage endpoints serve, and `passage_summary` which builds it from a `Passage`
 - `app/analysis/reading_session.py` — `ReadingSession`: turns a stream of (row, column, timestamp) fixations into Reading Speed (CPM/WPM) plus the secondary layer
 
-- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: collects the tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` on every usable frame (not on per-target averages, so it sees the frames' real jitter) only on success, `restart()` clears samples for a retry.
+- `app/analysis/calibration.py` — the 16-point (4×4) `CALIBRATION_POINTS` and `Calibration`: collects the tagged frames, success rule (≥12 usable targets, every row and column covered), fits a `GazeModel` on every usable frame (not on per-target averages, so it sees the frames' real jitter) only on success, `restart()` clears samples for a retry; on success it also returns held-out residuals (`held_out_residuals`: the last quarter of each target's frames, predicted by a separately fitted model) that the Session manager turns into `calibration_error_px` on protocol version 3 (`mean_error_px`).
 
 Guards on `/ws`: `OCURATE_ALLOWED_ORIGINS` (also the CORS list for `GET /passages`), a cap on live sockets (`app.state.live_sessions` vs `max_concurrent_sessions`, close `1013`), and `FrameRateLimiter` in `session_manager.py` (close `4429`). The limiter reads the arrival clock, the one exception to "browser timestamps only", because it must hold against a browser that lies about `frame.t`.
 

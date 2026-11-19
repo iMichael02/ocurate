@@ -10,6 +10,10 @@ GRID_SIDE = 4
 GRID_MIN = 0.1
 GRID_MAX = 0.9
 MIN_USABLE_POINTS = 12
+# Held-out calibration error: each target with at least this many frames
+# gives up the last quarter of them (at least one) for evaluation.
+MIN_FRAMES_TO_HOLD_OUT = 3
+HOLD_OUT_FRACTION = 0.25
 
 _STEP = (GRID_MAX - GRID_MIN) / (GRID_SIDE - 1)
 
@@ -48,11 +52,58 @@ class CalibrationResult:
     outcome: str
     reason: Optional[str]
     model: Optional[GazeModel]
+    # Held-out prediction errors (predicted minus target), one (dx, dy) row
+    # per held-out frame, viewport-normalized. None when not ready, or when
+    # too few targets had frames to spare (see held_out_residuals).
+    residuals: Optional[np.ndarray] = None
+
+
+def held_out_residuals(samples):
+    """Errors of a model that did not see the frames it is judged on.
+
+    `samples` maps a target index to its feature vectors in arrival order.
+    From every target with at least MIN_FRAMES_TO_HOLD_OUT frames the last
+    quarter (at least one frame) is held out as one block; consecutive frames
+    are nearly identical, so holding out scattered single frames would leak
+    their neighbours into training and flatter the figure. Every target stays
+    in training, so no target has to be extrapolated to. A separate model is
+    fitted on the remaining frames and predicts the held-out ones. Returns
+    None if fewer than MIN_USABLE_POINTS targets could hold frames out."""
+
+    X_train, y_train, X_test, y_test = [], [], [], []
+
+    for index, frames in samples.items():
+        target = CALIBRATION_POINTS[index]
+        held = max(1, int(len(frames) * HOLD_OUT_FRACTION)) if len(frames) >= MIN_FRAMES_TO_HOLD_OUT else 0
+        split = len(frames) - held
+        X_train.extend(frames[:split])
+        y_train.extend([target] * split)
+        X_test.extend(frames[split:])
+        y_test.extend([target] * held)
+
+    if len({tuple(target) for target in y_test}) < MIN_USABLE_POINTS:
+        return None
+
+    model = GazeModel()
+    model.train(np.array(X_train), np.array(y_train))
+
+    return model.predict(np.array(X_test)) - np.array(y_test)
+
+
+def mean_error_px(residuals, width, height):
+    """Mean Euclidean length of `residuals` (viewport-normalized) in CSS px,
+    each axis scaled by its own viewport size so a wide window is not
+    measured as if it were square."""
+
+    scaled = np.asarray(residuals, dtype=float) * np.array([width, height], dtype=float)
+
+    return float(np.mean(np.linalg.norm(scaled, axis=1)))
 
 
 class Calibration:
     """Collects tagged frames for one calibration attempt and fits the gaze
-    model on every usable frame, each labelled with its target. (Fitting on
+    model on every usable frame, each labelled with its target, and reports
+    a held-out estimate of its error (held_out_residuals). (Fitting on
     one average per target would teach the model clean inputs, and it would
     then amplify the frame-to-frame jitter of single frames at reading time.)
     A frame with features None (no face) counts for nothing."""
@@ -117,7 +168,8 @@ class Calibration:
         if len(rows) < GRID_SIDE or len(columns) < GRID_SIDE:
             return CalibrationResult(points, "failed", "missing_row_or_column", None)
 
+        # The Session's model is fitted on every frame; the held-out model only measures.
         model = GazeModel()
         model.train(np.array(X), np.array(y))
 
-        return CalibrationResult(points, "ready", None, model)
+        return CalibrationResult(points, "ready", None, model, held_out_residuals(self._samples))

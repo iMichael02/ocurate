@@ -15,10 +15,10 @@ Before the socket opens, the web server has called `POST /sessions` and handed t
 **service → browser**
 
 ```json server
-{"type":"hello_ack","version":1,"supported":[1,2]}
+{"type":"hello_ack","version":1,"supported":[1,2,3]}
 ```
 
-If the browser had sent `version: 3`, the service would answer `{"type":"error","code":"unsupported_version","message":"Protocol version 3 is not supported","supported":[1,2]}` and close the socket with `4409`.
+If the browser had sent `version: 4`, the service would answer `{"type":"error","code":"unsupported_version","message":"Protocol version 4 is not supported","supported":[1,2,3]}` and close the socket with `4409`.
 
 ## 2. Layout
 
@@ -64,6 +64,16 @@ The browser shows each of the 16 targets in turn (a 4×4 grid from 0.1 to 0.9) a
 {"type":"calibration_done"}
 ```
 
+### On protocol version 3
+
+The ready status also carries the held-out calibration error in CSS px of the Layout's viewport (see [websocket-protocol.md](./websocket-protocol.md#gaze-accuracy-version-3)).
+
+**service → browser** — version 3 only
+
+```json server
+{"type":"calibration_status","points":[{"index":0,"state":"ok","samples":30},{"index":1,"state":"ok","samples":30},{"index":2,"state":"ok","samples":30},{"index":3,"state":"ok","samples":30},{"index":4,"state":"ok","samples":30},{"index":5,"state":"ok","samples":30},{"index":6,"state":"ok","samples":30},{"index":7,"state":"ok","samples":30},{"index":8,"state":"ok","samples":30},{"index":9,"state":"ok","samples":30},{"index":10,"state":"ok","samples":30},{"index":11,"state":"ok","samples":30},{"index":12,"state":"ok","samples":30},{"index":13,"state":"ok","samples":30},{"index":14,"state":"ok","samples":30},{"index":15,"state":"ok","samples":30}],"outcome":"ready","attempt":1,"max_attempts":3,"calibration_error_px":41.7}
+```
+
 ### If calibration fails
 
 When fewer than 12 points are usable, or a row or column of the grid has none, the service reports a failure and the Session stays in calibration. The browser sends `calibration_restart` and streams the targets again. After `max_attempts` failures the Session ends abandoned.
@@ -96,6 +106,12 @@ Frames now carry no `target`. The first Fixation on the Passage's first Cell sta
 
 ```json server
 {"type":"reading_started"}
+```
+
+On protocol version 3, `reading_started` also carries the position of the Fixation that started reading:
+
+```json server
+{"type":"reading_started","gaze":{"x":0.11,"y":0.27}}
 ```
 
 **service → browser** — live highlight

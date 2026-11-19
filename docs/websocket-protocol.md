@@ -28,7 +28,7 @@ The browser opens one WebSocket at `/ws` (for example `ws://localhost:8000/ws`) 
 
 ## Version handshake
 
-- The service supports a set of versions: `{1, 2}`. Version 2 adds `frame.eye_centres` (see [eye-centre.md](./eye-centre.md)); everything else is identical.
+- The service supports a set of versions: `{1, 2, 3}`. Version 2 adds `frame.eye_centres` (see [eye-centre.md](./eye-centre.md)). Version 3 is version 2 plus two service → browser fields for gaze accuracy: `calibration_status.calibration_error_px` and `reading_started.gaze` (see [Gaze accuracy](#gaze-accuracy-version-3)). Everything else is identical, and a Session on version 1 or 2 receives these messages without the new fields.
 - `hello` is the first message and carries `version` and `token`.
 - The version is checked before the token. If supported, the service replies `hello_ack`. Otherwise it sends `error{code: "unsupported_version", supported: [...]}` and closes with `4409`.
 
@@ -38,7 +38,7 @@ The browser opens one WebSocket at `/ws` (for example `ws://localhost:8000/ws`) 
 |---|---|
 | `hello` | `version` (int), `token` (string) |
 | `layout` | `viewport`: `{width, height}` (px, > 0). `cells`: list of `{row, col, x, y, w, h}`, rectangle in 0–1 (viewport-normalized), `w` and `h` > 0, inside the viewport. Must cover every Cell of the Passage with no duplicate (row, col). Sent once, before calibration. |
-| `frame` | `t` (ms, finite). `iris`: 8 × `{x, y}`. `eye_corners`: 8 × `{x, y}`. `nose`: `{x, y}`. `matrix`: 4 × 4 numbers (4 rows of 4). `target`: optional `{x, y}`, present only during calibration. `eye_centres`: optional (version 2 only), 2 × `{x, y, confidence}`, left eye then right eye, `x` and `y` like a landmark, `confidence` in 0–1. A Session on version 1 that sends `eye_centres` gets `invalid_message` (Session manager rule). |
+| `frame` | `t` (ms, finite). `iris`: 8 × `{x, y}`. `eye_corners`: 8 × `{x, y}`. `nose`: `{x, y}`. `matrix`: 4 × 4 numbers (4 rows of 4). `target`: optional `{x, y}`, present only during calibration. `eye_centres`: optional (version 2 and later), 2 × `{x, y, confidence}`, left eye then right eye, `x` and `y` like a landmark, `confidence` in 0–1. A Session on version 1 that sends `eye_centres` gets `invalid_message` (Session manager rule). |
 | `calibration_restart` | none. Only valid after a `failed` outcome with attempts left. Discards the failed attempt's samples. |
 | `calibration_done` | none |
 | `viewport_changed` | none |
@@ -61,8 +61,8 @@ Relation to MediaPipe: `frame` is a reduced copy of the Face Landmarker result (
 | `type` | Fields |
 |---|---|
 | `hello_ack` | `version` (negotiated), `supported` (list of ints) |
-| `calibration_status` | `points`: 16 × `{index, state, samples}` where `state` is `pending`, `collecting`, `ok` or `skipped`. `outcome`: `null` while in progress, then `ready` or `failed`. `reason` (`too_few_points` or `missing_row_or_column`) when failed and only then; otherwise `null`. `points` must contain indices 0–15 exactly once. `attempt` and `max_attempts` (ints). |
-| `reading_started` | none |
+| `calibration_status` | `points`: 16 × `{index, state, samples}` where `state` is `pending`, `collecting`, `ok` or `skipped`. `outcome`: `null` while in progress, then `ready` or `failed`. `reason` (`too_few_points` or `missing_row_or_column`) when failed and only then; otherwise `null`. `points` must contain indices 0–15 exactly once. `attempt` and `max_attempts` (ints). `calibration_error_px`: version 3 only, with `outcome: "ready"` and only then, a number ≥ 0: the held-out mean gaze error in CSS px. Absent when it could not be measured. |
+| `reading_started` | `gaze`: version 3 only, `{x, y}` viewport-normalized (0–1), the position of the Fixation that started reading. Absent on versions 1 and 2. |
 | `fixation` | `row`, `col`, `t` |
 | `completed` | `result`: `{elapsed_seconds, cpm, wpm, saccades, regressions, skipped_characters, sequence}`, as `ReadingSession.result()` reports it. `sequence` is the list of fixated Cells in order, each `{row, col}`. |
 | `abandoned` | `reason` |
@@ -129,6 +129,19 @@ frame (no target) … → reading_started → fixation … → completed
 - Reading starts at the first `fixation` on the Passage's first Cell (`reading_started`, then `fixation`). Fixations on other Cells before that are not reported. After that one `fixation` is sent each time the fixated Cell changes. A gaze that is on no Cell (more than 0.02 from every rectangle) reports nothing.
 - On the last Cell the service sends `fixation`, `completed`, then closes with `1000`.
 - Frame `t` is in ms; the analysis divides by 1000, and `fixation.t` is the `t` of the frame that completed the fixation.
+
+## Gaze accuracy (version 3)
+
+Two figures, both computed or reported once per Session, so the Learner can judge how well gaze tracking worked. Neither is logged, stored or sent in the result callback.
+
+**Calibration error** (`calibration_status.calibration_error_px`). How well the model fits this Learner's calibration, measured on frames it was not fitted on:
+
+- Each target's tagged frames are kept in arrival order. From every target with at least 3 usable frames, the last quarter (at least one frame) is held out as one block. Consecutive frames are nearly identical, so holding out scattered frames would leak their neighbours into training and flatter the figure. Every target keeps its other frames in training, so no target has to be extrapolated to.
+- A separate model, the same kind as the Session's, is fitted on the remaining frames and predicts the held-out ones. The Session's own model is still fitted on every frame and is unchanged by this.
+- The error of each held-out frame is the distance from the prediction to its target in CSS px: the viewport-normalized `dx` and `dy` scaled by `layout.viewport.width` and `height`. `calibration_error_px` is the mean over the held-out frames.
+- If fewer than 12 targets could hold frames out, the field is absent. It is never sent with a failed outcome, so an Abandoned Session after failed calibration has no error.
+
+**Start gaze** (`reading_started.gaze`). The viewport-normalized position of the Fixation that started reading (the mean of the smoothed gaze over that Fixation), clamped to 0–1 because a Cell is matched from up to 0.02 outside it. One point per Session; there is no per-frame gaze. The browser may compare it with the mouse cursor (the "cursor check"); the service does not receive the cursor.
 
 ## Calibration retries
 
