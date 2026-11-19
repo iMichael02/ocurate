@@ -3,7 +3,9 @@ import pytest
 
 from types import SimpleNamespace
 
-from app.analysis.calibration import Calibration, CALIBRATION_POINTS, target_index
+from app.analysis.calibration import (CALIBRATION_POINTS, MIN_USABLE_POINTS, Calibration, held_out_residuals,
+                                      mean_error_px, target_index)
+from app.analysis.gaze_model import GazeModel
 
 
 def test_calibration_points_are_a_4x4_grid_from_0_1_to_0_9_row_major():
@@ -62,9 +64,13 @@ def test_frames_that_straddle_each_target_still_recover_the_target():
 def test_the_model_is_fitted_on_every_frame_not_on_one_average_per_target(monkeypatch):
 
     seen = {}
+    train = GazeModel.train
 
     def spy(self, X, y):
-        seen["X"], seen["y"] = np.array(X), np.array(y)
+        # The first fit is the Session's model; the second only measures the held-out error.
+        seen.setdefault("X", np.array(X))
+        seen.setdefault("y", np.array(y))
+        train(self, X, y)
 
     monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
     calibration = Calibration()
@@ -81,7 +87,13 @@ def test_the_model_is_fitted_on_every_frame_not_on_one_average_per_target(monkey
 def test_a_target_with_fewer_usable_frames_contributes_fewer_rows(monkeypatch):
 
     seen = {}
-    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", lambda self, X, y: seen.update(rows=len(X)))
+    train = GazeModel.train
+
+    def spy(self, X, y):
+        seen.setdefault("rows", len(X))
+        train(self, X, y)
+
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
     calibration = Calibration()
 
     feed(calibration, range(15), frames_per_point=4)
@@ -229,3 +241,142 @@ def test_progress_marks_earlier_targets_ok_or_skipped_and_the_rest_pending():
     assert states[1] == ("skipped", 0)
     assert states[2] == ("collecting", 1)
     assert all(state == ("pending", 0) for state in states[3:])
+
+
+# --- held-out calibration error -------------------------------------------------
+
+def feed_with_tail(calibration, frames_per_point, tail, tail_shift):
+    """Every target gets frames whose features are its own position; the last
+    `tail` frames of each are shifted right by `tail_shift`."""
+
+    for x, y in CALIBRATION_POINTS:
+        for n in range(frames_per_point):
+            shift = tail_shift if n >= frames_per_point - tail else 0.0
+            calibration.add_frame((x, y), np.array([x + shift, y]))
+
+
+def test_the_error_is_measured_on_the_last_quarter_of_each_target_held_out(monkeypatch):
+
+    rows = []
+    train = GazeModel.train
+
+    def spy(self, X, y):
+        rows.append(len(X))
+        train(self, X, y)
+
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
+    calibration = Calibration()
+
+    feed_with_tail(calibration, frames_per_point=8, tail=2, tail_shift=0.05)
+    result = calibration.finish()
+
+    # The Session's model sees every frame; the measuring model never sees the 2 held-out frames per target.
+    assert rows == [16 * 8, 16 * 6]
+    assert result.residuals.shape == (16 * 2, 2)
+    # The held-out frames look 0.05 to the right, and only an unseen frame shows that.
+    assert np.mean(result.residuals[:, 0]) == pytest.approx(0.05, abs=0.01)
+    assert np.mean(np.abs(result.residuals[:, 1])) < 0.01
+
+
+def test_the_held_out_error_is_larger_than_the_training_error_would_be():
+
+    calibration = Calibration()
+    feed_with_tail(calibration, frames_per_point=8, tail=2, tail_shift=0.05)
+    result = calibration.finish()
+
+    X = np.array([[x, y] for x, y in CALIBRATION_POINTS for _ in range(8)])
+    X[np.tile(np.arange(8) >= 6, 16), 0] += 0.05
+    y = np.repeat(np.array(CALIBRATION_POINTS), 8, axis=0)
+    training_error = np.mean(np.linalg.norm(result.model.predict(X) - y, axis=1))
+
+    assert np.mean(np.linalg.norm(result.residuals, axis=1)) > training_error
+
+
+def test_measuring_the_error_does_not_change_the_sessions_model():
+
+    with_error = Calibration()
+    feed_with_tail(with_error, frames_per_point=8, tail=2, tail_shift=0.05)
+    model = with_error.finish().model
+
+    X = np.array([[x, y] for x, y in CALIBRATION_POINTS for _ in range(8)])
+    X[np.tile(np.arange(8) >= 6, 16), 0] += 0.05
+    y = np.repeat(np.array(CALIBRATION_POINTS), 8, axis=0)
+    reference = GazeModel()
+    reference.train(X, y)
+
+    probe = np.array([[0.3, 0.7], [0.8, 0.2]])
+    assert np.allclose(model.predict(probe), reference.predict(probe))
+
+
+def test_a_target_with_too_few_frames_stays_in_training_and_holds_nothing_out():
+
+    samples = {index: [np.array(point, dtype=float)] * (2 if index == 0 else 4)
+               for index, point in enumerate(CALIBRATION_POINTS)}
+
+    residuals = held_out_residuals(samples)
+
+    assert residuals.shape == (15, 2)
+
+
+def test_no_error_when_too_few_targets_can_hold_frames_out():
+
+    calibration = Calibration()
+    feed(calibration, range(16), frames_per_point=2)
+
+    result = calibration.finish()
+
+    assert result.outcome == "ready"
+    assert result.residuals is None
+
+
+def test_the_error_needs_held_out_frames_from_at_least_12_targets():
+
+    samples = {index: [np.array(point, dtype=float)] * (3 if index < MIN_USABLE_POINTS else 2)
+               for index, point in enumerate(CALIBRATION_POINTS)}
+
+    assert held_out_residuals(samples).shape == (MIN_USABLE_POINTS, 2)
+
+    samples[0] = samples[0][:2]
+
+    assert held_out_residuals(samples) is None
+
+
+def test_a_failed_calibration_has_no_error():
+
+    calibration = Calibration()
+    feed(calibration, range(8), frames_per_point=8)
+
+    result = calibration.finish()
+
+    assert result.outcome == "failed"
+    assert result.residuals is None
+
+
+def test_the_mean_error_in_px_scales_each_axis_by_its_own_viewport_size():
+
+    residuals = np.array([[0.1, 0.0], [0.0, 0.1], [0.03, 0.04]])
+
+    # 100 px across, 50 px down, and (30, 20) px -> about 36.06 px.
+    assert mean_error_px(residuals, 1000, 500) == pytest.approx((100 + 50 + np.hypot(30, 20)) / 3)
+
+
+def test_a_failure_while_measuring_the_error_does_not_fail_the_calibration(monkeypatch):
+
+    train = GazeModel.train
+    fits = []
+
+    def spy(self, X, y):
+        fits.append(1)
+        if len(fits) == 2:
+            raise np.linalg.LinAlgError("singular")
+        train(self, X, y)
+
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
+    calibration = Calibration()
+    feed_with_tail(calibration, frames_per_point=8, tail=2, tail_shift=0.05)
+
+    result = calibration.finish()
+
+    assert result.outcome == "ready"
+    assert result.model is not None
+    assert result.residuals is None

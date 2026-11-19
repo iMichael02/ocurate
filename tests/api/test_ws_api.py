@@ -85,7 +85,7 @@ def test_hello_is_acknowledged():
 
         ack = receive(websocket)
 
-    assert (ack.type, ack.version, ack.supported) == ("hello_ack", 2, [1, 2])
+    assert (ack.type, ack.version, ack.supported) == ("hello_ack", 2, [1, 2, 3])
 
 
 def test_a_bad_token_is_refused_with_4401():
@@ -255,7 +255,7 @@ def test_an_unsupported_version_is_refused_with_4409():
         websocket.send_text(hello(version=9, token=new_token(app)))
 
         error = receive(websocket)
-        assert (error.code, error.supported) == ("unsupported_version", [1, 2])
+        assert (error.code, error.supported) == ("unsupported_version", [1, 2, 3])
         assert expect_close(websocket) == protocol.CLOSE_UNSUPPORTED_VERSION
 
 

@@ -45,8 +45,8 @@ Browser (web interface)            Web server                    Gaze-analysis s
 | browser → service | `calibration_restart` | none. Retry after a failed calibration, on the same socket, up to a limited number of attempts. |
 | browser → service | `calibration_done` | none |
 | browser → service | `viewport_changed` / `quit` | none |
-| service → browser | `calibration_status` | per-target status (face seen, sample count), then `ready` or `failed` |
-| service → browser | `reading_started` | none |
+| service → browser | `calibration_status` | per-target status (face seen, sample count), then `ready` or `failed`; on protocol version 3, `ready` carries the held-out calibration error in px |
+| service → browser | `reading_started` | none; on protocol version 3, the gaze position of the Fixation that started reading |
 | service → browser | `fixation` | the Cell (row, column) the Learner is currently fixating, for live highlighting |
 | service → browser | `completed` | the result (Reading Speed and secondary layer) |
 | service → browser | `abandoned` | reason |
