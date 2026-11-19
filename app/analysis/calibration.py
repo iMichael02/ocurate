@@ -172,4 +172,10 @@ class Calibration:
         model = GazeModel()
         model.train(np.array(X), np.array(y))
 
-        return CalibrationResult(points, "ready", None, model, held_out_residuals(self._samples))
+        # The figure is optional: if measuring it fails, the calibration still succeeds without it.
+        try:
+            residuals = held_out_residuals(self._samples)
+        except (ValueError, np.linalg.LinAlgError):
+            residuals = None
+
+        return CalibrationResult(points, "ready", None, model, residuals)

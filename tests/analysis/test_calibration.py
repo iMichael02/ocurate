@@ -358,3 +358,25 @@ def test_the_mean_error_in_px_scales_each_axis_by_its_own_viewport_size():
 
     # 100 px across, 50 px down, and (30, 20) px -> about 36.06 px.
     assert mean_error_px(residuals, 1000, 500) == pytest.approx((100 + 50 + np.hypot(30, 20)) / 3)
+
+
+def test_a_failure_while_measuring_the_error_does_not_fail_the_calibration(monkeypatch):
+
+    train = GazeModel.train
+    fits = []
+
+    def spy(self, X, y):
+        fits.append(1)
+        if len(fits) == 2:
+            raise np.linalg.LinAlgError("singular")
+        train(self, X, y)
+
+    monkeypatch.setattr("app.analysis.gaze_model.GazeModel.train", spy)
+    calibration = Calibration()
+    feed_with_tail(calibration, frames_per_point=8, tail=2, tail_shift=0.05)
+
+    result = calibration.finish()
+
+    assert result.outcome == "ready"
+    assert result.model is not None
+    assert result.residuals is None

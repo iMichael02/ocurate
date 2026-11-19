@@ -1084,10 +1084,14 @@ def test_the_error_is_not_logged(held_out_residuals, session_log):
 
     ready_status(started(version=3))
     text = " ".join(record.getMessage() for record in session_log)
+    # Structured fields travel as record attributes, so look at those too.
+    everything = text + " " + " ".join(f"{key}={value}" for record in session_log
+                                        for key, value in vars(record).items())
 
     assert "calibration_judged" in text
-    assert "13.0" not in text
-    assert "error" not in text
+    assert "13.0" not in everything
+    assert "calibration_error" not in everything
+    assert "residual" not in everything
 
 
 def test_version_3_reading_started_carries_the_fixations_gaze():
